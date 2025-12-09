@@ -410,7 +410,9 @@ export default function CreatePost() {
         
         {/* Sidebar - Accessibility Checker */}
         <div className="lg:w-[350px] space-y-6">
-          <AccessibilityChecker content={content} platform={platform} />
+          <div data-tour="accessibility-checker">
+            <AccessibilityChecker content={content} platform={platform} />
+          </div>
           
           {/* Quick Tips */}
           <Card>

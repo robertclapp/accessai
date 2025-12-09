@@ -150,3 +150,20 @@
 - [x] Extract reusable utilities
 - [x] Add constants file for magic numbers
 - [x] Comprehensive test coverage (34 tests passing)
+
+
+## User Onboarding Flow (New)
+- [x] OnboardingTour component with step-by-step guidance
+- [x] Tour highlight/spotlight effect for target elements
+- [x] Welcome modal for first-time users
+- [x] Voice input tour step with demo
+- [x] Accessibility checker tour step with example
+- [x] Content calendar tour step with walkthrough
+- [x] Post builder tour step
+- [x] Knowledge base tour step
+- [x] Onboarding completion tracking in database
+- [x] Skip tour option
+- [x] Restart tour from settings
+- [x] Progress indicator during tour
+- [x] Keyboard navigation for tour
+- [x] Screen reader announcements for tour steps

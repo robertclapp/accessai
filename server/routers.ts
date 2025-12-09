@@ -1056,6 +1056,30 @@ ${aiContext}`
       .query(async ({ ctx }) => {
         return await db.getNotificationPreferences(ctx.user.id);
       }),
+    
+    // Onboarding status
+    getOnboardingStatus: protectedProcedure
+      .query(async ({ ctx }) => {
+        const user = await db.getUserById(ctx.user.id);
+        return {
+          hasCompletedTour: user?.hasCompletedTour ?? false,
+          tourCompletedAt: user?.tourCompletedAt ?? null
+        };
+      }),
+    
+    updateOnboardingStatus: protectedProcedure
+      .input(z.object({
+        hasCompletedTour: z.boolean(),
+        tourSkipped: z.boolean().optional(),
+        tourCompletedAt: z.string().optional()
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateUserOnboarding(ctx.user.id, {
+          hasCompletedTour: input.hasCompletedTour,
+          tourCompletedAt: input.tourCompletedAt ? new Date(input.tourCompletedAt) : undefined
+        });
+        return { success: true };
+      }),
   }),
 
   // ============================================

@@ -22,6 +22,13 @@
       "when": 1765250239621,
       "tag": "0002_light_leper_queen",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1765283038758,
+      "tag": "0003_strange_hobgoblin",
+      "breakpoints": true
     }
   ]
 }

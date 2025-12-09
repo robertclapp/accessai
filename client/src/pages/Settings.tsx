@@ -42,6 +42,8 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import { Link } from "wouter";
+import { useOnboarding } from "@/contexts/OnboardingContext";
+import { HelpCircle } from "lucide-react";
 
 type FontSize = "small" | "medium" | "large" | "xlarge";
 type Formality = "casual" | "professional" | "academic";
@@ -62,6 +64,23 @@ interface WritingStyleProfile {
   formality?: Formality;
   industry?: string;
   targetAudience?: string;
+}
+
+/** Restart Tour Button Component */
+function RestartTourButton() {
+  const { restartTour } = useOnboarding();
+  
+  const handleRestartTour = () => {
+    restartTour();
+    toast.success("Tour restarted! Navigate to the Dashboard to begin.");
+  };
+  
+  return (
+    <Button variant="outline" onClick={handleRestartTour}>
+      <HelpCircle className="h-4 w-4 mr-2" />
+      Restart Guided Tour
+    </Button>
+  );
 }
 
 export default function Settings() {
@@ -956,6 +975,16 @@ export default function Settings() {
                     </>
                   )}
                 </Button>
+              </div>
+              
+              <Separator />
+              
+              <div className="space-y-4">
+                <h3 className="font-medium">Onboarding Tour</h3>
+                <p className="text-sm text-muted-foreground">
+                  Restart the guided tour to learn about AccessAI's features.
+                </p>
+                <RestartTourButton />
               </div>
               
               <Separator />

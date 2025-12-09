@@ -42,6 +42,10 @@ export const users = mysqlTable("users", {
   monthlyPostsGenerated: int("monthlyPostsGenerated").default(0),
   lastPostResetDate: timestamp("lastPostResetDate"),
   
+  // Onboarding tracking
+  hasCompletedTour: boolean("hasCompletedTour").default(false),
+  tourCompletedAt: timestamp("tourCompletedAt"),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

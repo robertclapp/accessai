@@ -10,6 +10,8 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { OnboardingProvider, useOnboarding } from "./contexts/OnboardingContext";
+import { OnboardingTour, WelcomeModal } from "./components/OnboardingTour";
 import { useAuth } from "./_core/hooks/useAuth";
 import { Loader2 } from "lucide-react";
 
@@ -45,6 +47,34 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return <Component />;
 }
 
+/** Onboarding wrapper for authenticated users */
+function OnboardingWrapper() {
+  const { user } = useAuth();
+  const { 
+    showWelcomeModal, 
+    showTour, 
+    startTour, 
+    skipTour, 
+    completeTour 
+  } = useOnboarding();
+
+  return (
+    <>
+      <WelcomeModal
+        isOpen={showWelcomeModal}
+        onStartTour={startTour}
+        onSkip={skipTour}
+        userName={user?.name?.split(" ")[0]}
+      />
+      <OnboardingTour
+        isOpen={showTour}
+        onComplete={completeTour}
+        onSkip={skipTour}
+      />
+    </>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -63,13 +93,26 @@ function Router() {
   );
 }
 
+function AppContent() {
+  const { isAuthenticated } = useAuth();
+  
+  return (
+    <>
+      <Toaster />
+      <Router />
+      {isAuthenticated && <OnboardingWrapper />}
+    </>
+  );
+}
+
 function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
         <TooltipProvider>
-          <Toaster />
-          <Router />
+          <OnboardingProvider>
+            <AppContent />
+          </OnboardingProvider>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

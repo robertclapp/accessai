@@ -112,34 +112,42 @@ export default function Dashboard() {
         <section aria-labelledby="quick-actions-heading">
           <h2 id="quick-actions-heading" className="sr-only">Quick Actions</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <QuickAction
-              title="Create Post"
-              description="Write accessible content with AI assistance"
-              icon={PenSquare}
-              href="/create"
-              color="bg-blue-500"
-            />
-            <QuickAction
-              title="Voice Input"
-              description="Speak your content hands-free"
-              icon={Mic}
-              href="/create?voice=true"
-              color="bg-purple-500"
-            />
-            <QuickAction
-              title="Content Calendar"
-              description="Schedule and plan your posts"
-              icon={Calendar}
-              href="/calendar"
-              color="bg-green-500"
-            />
-            <QuickAction
-              title="Knowledge Base"
-              description="Manage brand guidelines and swipe files"
-              icon={BookOpen}
-              href="/knowledge"
-              color="bg-orange-500"
-            />
+            <div data-tour="post-builder">
+              <QuickAction
+                title="Create Post"
+                description="Write accessible content with AI assistance"
+                icon={PenSquare}
+                href="/create"
+                color="bg-blue-500"
+              />
+            </div>
+            <div data-tour="voice-input">
+              <QuickAction
+                title="Voice Input"
+                description="Speak your content hands-free"
+                icon={Mic}
+                href="/create?voice=true"
+                color="bg-purple-500"
+              />
+            </div>
+            <div data-tour="content-calendar">
+              <QuickAction
+                title="Content Calendar"
+                description="Schedule and plan your posts"
+                icon={Calendar}
+                href="/calendar"
+                color="bg-green-500"
+              />
+            </div>
+            <div data-tour="knowledge-base">
+              <QuickAction
+                title="Knowledge Base"
+                description="Manage brand guidelines and swipe files"
+                icon={BookOpen}
+                href="/knowledge"
+                color="bg-orange-500"
+              />
+            </div>
           </div>
         </section>
         

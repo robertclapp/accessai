@@ -839,3 +839,24 @@ export async function updateSocialAccount(accountId: number, data: {
     })
     .where(eq(socialAccounts.id, accountId));
 }
+
+
+// ============================================
+// ONBOARDING OPERATIONS
+// ============================================
+
+/**
+ * Update user onboarding status
+ */
+export async function updateUserOnboarding(
+  userId: number,
+  data: {
+    hasCompletedTour?: boolean;
+    tourCompletedAt?: Date;
+  }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.update(users).set(data).where(eq(users.id, userId));
+}
