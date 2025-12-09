@@ -44,6 +44,7 @@ import { toast } from "sonner";
 import { Link } from "wouter";
 import { useOnboarding } from "@/contexts/OnboardingContext";
 import { HelpCircle } from "lucide-react";
+import { AccountDeletionDialog, ScheduledDeletionBanner } from "@/components/AccountDeletionDialog";
 
 type FontSize = "small" | "medium" | "large" | "xlarge";
 type Formality = "casual" | "professional" | "academic";
@@ -255,14 +256,17 @@ export default function Settings() {
     });
   };
   
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  
   const handleDeleteAccount = () => {
-    if (confirm("Are you sure you want to delete your account? This action cannot be undone.")) {
-      toast.error("Account deletion requires confirmation via email. Check your inbox.");
-    }
+    setShowDeleteDialog(true);
   };
 
   return (
     <div className="container py-8 max-w-4xl">
+      {/* Show banner if account deletion is scheduled */}
+      <ScheduledDeletionBanner />
+      
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Settings</h1>
         <p className="text-muted-foreground mt-1">
@@ -1007,6 +1011,12 @@ export default function Settings() {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {/* Account Deletion Dialog */}
+      <AccountDeletionDialog 
+        open={showDeleteDialog} 
+        onOpenChange={setShowDeleteDialog} 
+      />
     </div>
   );
 }

@@ -1156,6 +1156,42 @@ ${aiContext}`
         });
         return { success: true };
       }),
+    
+    // Account Deletion (GDPR Compliance)
+    getDeletionStatus: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { getDeletionStatus } = await import("./services/accountDeletion");
+        return await getDeletionStatus(ctx.user.id);
+      }),
+    
+    scheduleAccountDeletion: protectedProcedure
+      .input(z.object({
+        immediate: z.boolean().default(false),
+        exportData: z.boolean().default(true),
+        confirmationText: z.string(), // User must type "DELETE" to confirm
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify confirmation text
+        if (input.confirmationText !== "DELETE") {
+          return {
+            success: false,
+            message: "Please type DELETE to confirm account deletion",
+          };
+        }
+        
+        const { scheduleAccountDeletion } = await import("./services/accountDeletion");
+        return await scheduleAccountDeletion(
+          ctx.user.id,
+          input.immediate,
+          input.exportData
+        );
+      }),
+    
+    cancelAccountDeletion: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const { cancelAccountDeletion } = await import("./services/accountDeletion");
+        return await cancelAccountDeletion(ctx.user.id);
+      }),
   }),
 
   // ============================================

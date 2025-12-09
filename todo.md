@@ -105,7 +105,7 @@
 - [x] Subscription and billing information
 - [x] Writing style preferences
 - [x] Data export functionality
-- [ ] Account deletion
+- [x] Account deletion
 
 ## Social Media API Integrations (New)
 - [x] LinkedIn API adapter with OAuth 2.0
@@ -182,3 +182,24 @@
 - [x] Add verification success page (VerifyEmail.tsx)
 - [x] Add verification status indicator in Dashboard
 - [x] Write tests for email verification flow (52 tests passing)
+
+
+## Account Deletion (GDPR Compliance) - New
+- [x] Account deletion service with cascading data cleanup
+- [x] Delete user posts and associated analytics
+- [x] Delete knowledge base items
+- [x] Delete team memberships and owned teams
+- [x] Delete generated images metadata
+- [x] Delete social account connections
+- [x] Delete notification preferences
+- [x] Delete verification tokens
+- [x] Cancel active Stripe subscriptions
+- [x] Account deletion API endpoint with confirmation
+- [x] Deletion confirmation dialog with "DELETE" confirmation
+- [x] Data export before deletion option
+- [x] 30-day grace period option for account recovery
+- [x] Owner notification on account deletion
+- [x] Account deletion UI in Settings Privacy tab
+- [x] Scheduled deletion banner component
+- [x] Cancel deletion functionality
+- [x] Write tests for account deletion flow (64 tests passing)

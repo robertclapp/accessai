@@ -50,6 +50,9 @@ export const users = mysqlTable("users", {
   emailVerified: boolean("emailVerified").default(false),
   emailVerifiedAt: timestamp("emailVerifiedAt"),
   
+  // Account deletion (GDPR compliance)
+  deletionScheduledAt: timestamp("deletionScheduledAt"),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
