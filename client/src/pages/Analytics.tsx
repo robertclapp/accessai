@@ -49,6 +49,7 @@ import {
   Cell,
   Legend
 } from "recharts";
+import { Link } from "wouter";
 
 // Chart colors
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
@@ -158,7 +159,13 @@ export default function Analytics() {
             </p>
           </div>
           
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <Link href="/analytics/platforms">
+              <Button variant="outline" size="sm" className="gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Platform Comparison
+              </Button>
+            </Link>
             <Select value={dateRange} onValueChange={setDateRange}>
               <SelectTrigger className="w-40" aria-label="Select date range">
                 <SelectValue />

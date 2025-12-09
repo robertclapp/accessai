@@ -1151,3 +1151,271 @@ export async function deleteFeaturedPartner(id: number) {
   
   await db.delete(featuredPartners).where(eq(featuredPartners.id, id));
 }
+
+
+// ============================================
+// PLATFORM ANALYTICS COMPARISON
+// ============================================
+
+/**
+ * Platform analytics metrics structure
+ */
+export interface PlatformMetrics {
+  platform: string;
+  postCount: number;
+  publishedCount: number;
+  totalImpressions: number;
+  totalEngagements: number;
+  totalClicks: number;
+  totalLikes: number;
+  totalComments: number;
+  totalShares: number;
+  avgAccessibilityScore: number;
+  engagementRate: number;
+  bestPerformingPost?: {
+    id: number;
+    title: string | null;
+    engagements: number;
+    impressions: number;
+  };
+}
+
+/**
+ * Get analytics comparison across all platforms for a user
+ */
+export async function getPlatformAnalyticsComparison(
+  userId: number,
+  dateRange?: { start: Date; end: Date }
+): Promise<PlatformMetrics[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Build conditions
+  const conditions = [eq(posts.userId, userId)];
+  
+  if (dateRange) {
+    conditions.push(gte(posts.createdAt, dateRange.start));
+    conditions.push(lte(posts.createdAt, dateRange.end));
+  }
+  
+  // Get all user posts
+  const userPosts = await db.select().from(posts).where(and(...conditions));
+  
+  // Group by platform
+  const platformGroups: Record<string, typeof userPosts> = {};
+  
+  userPosts.forEach(post => {
+    if (post.platform !== "all") {
+      if (!platformGroups[post.platform]) {
+        platformGroups[post.platform] = [];
+      }
+      platformGroups[post.platform].push(post);
+    }
+  });
+  
+  // Calculate metrics for each platform
+  const metrics: PlatformMetrics[] = [];
+  
+  for (const [platform, platformPosts] of Object.entries(platformGroups)) {
+    const publishedPosts = platformPosts.filter(p => p.status === "published");
+    
+    let totalImpressions = 0;
+    let totalEngagements = 0;
+    let totalClicks = 0;
+    let totalLikes = 0;
+    let totalComments = 0;
+    let totalShares = 0;
+    let accessibilitySum = 0;
+    let accessibilityCount = 0;
+    let bestPost: PlatformMetrics["bestPerformingPost"] = undefined;
+    let bestEngagement = 0;
+    
+    platformPosts.forEach(post => {
+      if (post.analytics) {
+        const analytics = post.analytics;
+        const impressions = analytics.impressions || 0;
+        const engagements = analytics.engagements || 0;
+        const clicks = analytics.clicks || 0;
+        const likes = analytics.likes || 0;
+        const comments = analytics.comments || 0;
+        const shares = analytics.shares || 0;
+        
+        totalImpressions += impressions;
+        totalEngagements += engagements;
+        totalClicks += clicks;
+        totalLikes += likes;
+        totalComments += comments;
+        totalShares += shares;
+        
+        // Track best performing post
+        if (engagements > bestEngagement) {
+          bestEngagement = engagements;
+          bestPost = {
+            id: post.id,
+            title: post.title,
+            engagements,
+            impressions
+          };
+        }
+      }
+      
+      if (post.accessibilityScore !== null) {
+        accessibilitySum += post.accessibilityScore;
+        accessibilityCount++;
+      }
+    });
+    
+    const engagementRate = totalImpressions > 0 
+      ? (totalEngagements / totalImpressions) * 100 
+      : 0;
+    
+    metrics.push({
+      platform,
+      postCount: platformPosts.length,
+      publishedCount: publishedPosts.length,
+      totalImpressions,
+      totalEngagements,
+      totalClicks,
+      totalLikes,
+      totalComments,
+      totalShares,
+      avgAccessibilityScore: accessibilityCount > 0 
+        ? Math.round(accessibilitySum / accessibilityCount) 
+        : 0,
+      engagementRate: Math.round(engagementRate * 100) / 100,
+      bestPerformingPost: bestPost
+    });
+  }
+  
+  // Sort by engagement rate (best performing first)
+  metrics.sort((a, b) => b.engagementRate - a.engagementRate);
+  
+  return metrics;
+}
+
+/**
+ * Get platform performance trends over time
+ */
+export async function getPlatformTrends(
+  userId: number,
+  platform: string,
+  period: "week" | "month" | "quarter" | "year" = "month"
+): Promise<Array<{
+  date: string;
+  impressions: number;
+  engagements: number;
+  posts: number;
+  engagementRate: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Calculate date range based on period
+  const now = new Date();
+  const startDate = new Date();
+  
+  switch (period) {
+    case "week":
+      startDate.setDate(now.getDate() - 7);
+      break;
+    case "month":
+      startDate.setMonth(now.getMonth() - 1);
+      break;
+    case "quarter":
+      startDate.setMonth(now.getMonth() - 3);
+      break;
+    case "year":
+      startDate.setFullYear(now.getFullYear() - 1);
+      break;
+  }
+  
+  const conditions = [
+    eq(posts.userId, userId),
+    eq(posts.platform, platform as "linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "all"),
+    gte(posts.createdAt, startDate)
+  ];
+  
+  const userPosts = await db.select().from(posts).where(and(...conditions));
+  
+  // Group by date
+  const dateGroups: Record<string, typeof userPosts> = {};
+  
+  userPosts.forEach(post => {
+    const dateKey = post.createdAt.toISOString().split("T")[0];
+    if (!dateGroups[dateKey]) {
+      dateGroups[dateKey] = [];
+    }
+    dateGroups[dateKey].push(post);
+  });
+  
+  // Calculate daily metrics
+  const trends = Object.entries(dateGroups).map(([date, datePosts]) => {
+    let impressions = 0;
+    let engagements = 0;
+    
+    datePosts.forEach(post => {
+      if (post.analytics) {
+        impressions += post.analytics.impressions || 0;
+        engagements += post.analytics.engagements || 0;
+      }
+    });
+    
+    return {
+      date,
+      impressions,
+      engagements,
+      posts: datePosts.length,
+      engagementRate: impressions > 0 ? Math.round((engagements / impressions) * 10000) / 100 : 0
+    };
+  });
+  
+  // Sort by date
+  trends.sort((a, b) => a.date.localeCompare(b.date));
+  
+  return trends;
+}
+
+/**
+ * Get the best performing platform for a user
+ */
+export async function getBestPerformingPlatform(userId: number): Promise<{
+  platform: string;
+  engagementRate: number;
+  totalEngagements: number;
+  recommendation: string;
+} | null> {
+  const metrics = await getPlatformAnalyticsComparison(userId);
+  
+  if (metrics.length === 0) return null;
+  
+  // Find platform with highest engagement rate (with minimum posts threshold)
+  const qualifiedPlatforms = metrics.filter(m => m.publishedCount >= 3);
+  
+  if (qualifiedPlatforms.length === 0) {
+    // Not enough data, return the one with most posts
+    const mostPosts = metrics.reduce((a, b) => a.postCount > b.postCount ? a : b);
+    return {
+      platform: mostPosts.platform,
+      engagementRate: mostPosts.engagementRate,
+      totalEngagements: mostPosts.totalEngagements,
+      recommendation: `Post more content on ${mostPosts.platform} to gather meaningful analytics data.`
+    };
+  }
+  
+  const best = qualifiedPlatforms[0]; // Already sorted by engagement rate
+  
+  const recommendations: Record<string, string> = {
+    linkedin: "Your LinkedIn content resonates well. Consider posting more thought leadership and industry insights.",
+    twitter: "Your X/Twitter content performs best. Focus on timely, conversational posts and threads.",
+    facebook: "Facebook works well for your content. Try more personal stories and community engagement.",
+    instagram: "Instagram is your top performer. Invest in visual content and Stories.",
+    threads: "Threads is working well for you. Keep the conversational, authentic tone."
+  };
+  
+  return {
+    platform: best.platform,
+    engagementRate: best.engagementRate,
+    totalEngagements: best.totalEngagements,
+    recommendation: recommendations[best.platform] || `Continue focusing on ${best.platform} for best results.`
+  };
+}

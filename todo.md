@@ -281,3 +281,17 @@
 - [x] Update settings page for Threads account connection
 - [x] Add Threads to scheduled posting system
 - [x] Write tests for Threads integration (122 tests passing)
+
+
+## Platform Analytics Comparison (New)
+- [x] Create analytics aggregation API endpoint
+- [x] Add platform-level metrics (posts, engagement, impressions)
+- [x] Build PlatformComparison dashboard component
+- [x] Create bar chart for cross-platform engagement comparison
+- [x] Create line chart for performance trends over time
+- [x] Add best performing platform indicator with recommendations
+- [x] Create engagement rate calculations per platform
+- [x] Add date range filter for analytics
+- [x] Build platform performance cards with key metrics
+- [ ] Add export analytics comparison report
+- [x] Write tests for analytics comparison feature (137 tests passing)

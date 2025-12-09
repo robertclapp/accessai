@@ -1023,6 +1023,46 @@ ${aiContext}`
         }
         return post.analytics || {};
       }),
+    
+    /**
+     * Get analytics comparison across all platforms
+     */
+    getPlatformComparison: protectedProcedure
+      .input(z.object({
+        dateRange: z.object({
+          start: z.date(),
+          end: z.date()
+        }).optional()
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        return await db.getPlatformAnalyticsComparison(
+          ctx.user.id,
+          input?.dateRange
+        );
+      }),
+    
+    /**
+     * Get performance trends for a specific platform
+     */
+    getPlatformTrends: protectedProcedure
+      .input(z.object({
+        platform: platformSchema.exclude(["all"]),
+        period: z.enum(["week", "month", "quarter", "year"]).default("month")
+      }))
+      .query(async ({ ctx, input }) => {
+        return await db.getPlatformTrends(
+          ctx.user.id,
+          input.platform,
+          input.period
+        );
+      }),
+    
+    /**
+     * Get the best performing platform with recommendations
+     */
+    getBestPlatform: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getBestPerformingPlatform(ctx.user.id);
+    }),
   }),
 
   // ============================================
