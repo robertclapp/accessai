@@ -1440,6 +1440,216 @@ ${aiContext}`
         };
       }),
   }),
+
+  // ============================================
+  // BLOG ROUTER (Public)
+  // ============================================
+  blog: router({
+    /**
+     * Get published blog posts with pagination
+     */
+    list: publicProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(50).default(10),
+        offset: z.number().min(0).default(0),
+        categorySlug: z.string().optional(),
+        tagSlug: z.string().optional(),
+        featured: z.boolean().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const options = input || { limit: 10, offset: 0 };
+        return db.getPublishedBlogPosts(options);
+      }),
+
+    /**
+     * Get a single blog post by slug
+     */
+    bySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(async ({ input }) => {
+        const post = await db.getBlogPostBySlug(input.slug);
+        if (post) {
+          // Increment view count
+          await db.incrementBlogPostViews(post.id);
+        }
+        return post;
+      }),
+
+    /**
+     * Get all blog categories
+     */
+    categories: publicProcedure.query(async () => {
+      return db.getBlogCategories();
+    }),
+
+    /**
+     * Get all blog tags
+     */
+    tags: publicProcedure.query(async () => {
+      return db.getBlogTags();
+    }),
+
+    /**
+     * Get related posts
+     */
+    related: publicProcedure
+      .input(z.object({
+        postId: z.number(),
+        categoryId: z.number().nullable(),
+        limit: z.number().min(1).max(10).default(3),
+      }))
+      .query(async ({ input }) => {
+        return db.getRelatedBlogPosts(input.postId, input.categoryId, input.limit);
+      }),
+
+    // Admin operations (protected)
+    /**
+     * Get all blog posts for admin (including drafts)
+     */
+    adminList: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new Error("Admin access required");
+      }
+      return db.getAllBlogPosts();
+    }),
+
+    /**
+     * Create a new blog post
+     */
+    create: protectedProcedure
+      .input(z.object({
+        title: z.string().min(1).max(200),
+        slug: z.string().min(1).max(200),
+        excerpt: z.string().optional(),
+        content: z.string().min(1),
+        featuredImage: z.string().optional(),
+        featuredImageAlt: z.string().optional(),
+        metaTitle: z.string().max(70).optional(),
+        metaDescription: z.string().max(160).optional(),
+        categoryId: z.number().optional(),
+        status: z.enum(["draft", "published", "archived"]).default("draft"),
+        featured: z.boolean().default(false),
+        tagIds: z.array(z.number()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+
+        const { tagIds, ...postData } = input;
+        
+        // Calculate reading time (rough estimate: 200 words per minute)
+        const wordCount = input.content.split(/\s+/).length;
+        const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
+
+        const postId = await db.createBlogPost({
+          ...postData,
+          authorId: ctx.user.id,
+          readingTimeMinutes,
+          publishedAt: input.status === "published" ? new Date() : null,
+        });
+
+        if (tagIds && tagIds.length > 0) {
+          await db.setBlogPostTags(postId, tagIds);
+        }
+
+        return { id: postId };
+      }),
+
+    /**
+     * Update a blog post
+     */
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        title: z.string().min(1).max(200).optional(),
+        slug: z.string().min(1).max(200).optional(),
+        excerpt: z.string().optional(),
+        content: z.string().min(1).optional(),
+        featuredImage: z.string().optional(),
+        featuredImageAlt: z.string().optional(),
+        metaTitle: z.string().max(70).optional(),
+        metaDescription: z.string().max(160).optional(),
+        categoryId: z.number().optional(),
+        status: z.enum(["draft", "published", "archived"]).optional(),
+        featured: z.boolean().optional(),
+        tagIds: z.array(z.number()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+
+        const { id, tagIds, ...updates } = input;
+        
+        // Recalculate reading time if content changed
+        if (updates.content) {
+          const wordCount = updates.content.split(/\s+/).length;
+          (updates as any).readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
+        }
+
+        // Set publishedAt if status changed to published
+        if (updates.status === "published") {
+          (updates as any).publishedAt = new Date();
+        }
+
+        await db.updateBlogPost(id, updates);
+
+        if (tagIds !== undefined) {
+          await db.setBlogPostTags(id, tagIds);
+        }
+
+        return { success: true };
+      }),
+
+    /**
+     * Delete a blog post
+     */
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+
+        await db.deleteBlogPost(input.id);
+        return { success: true };
+      }),
+
+    /**
+     * Create or get a category
+     */
+    upsertCategory: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(100),
+        slug: z.string().min(1).max(100),
+        description: z.string().optional(),
+        color: z.string().max(7).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+        const id = await db.upsertBlogCategory(input);
+        return { id };
+      }),
+
+    /**
+     * Create or get a tag
+     */
+    upsertTag: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(50),
+        slug: z.string().min(1).max(50),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+        const id = await db.upsertBlogTag(input);
+        return { id };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

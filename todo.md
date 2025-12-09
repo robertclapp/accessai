@@ -203,3 +203,25 @@
 - [x] Scheduled deletion banner component
 - [x] Cancel deletion functionality
 - [x] Write tests for account deletion flow (64 tests passing)
+
+
+## Public Blog/Content Hub (New)
+- [x] Blog posts table with title, slug, content, excerpt, featured image
+- [x] Blog categories table
+- [x] Blog tags table with many-to-many relationship
+- [x] Public blog listing page with pagination
+- [x] Category and tag filtering
+- [x] Individual blog post page with accessible design
+- [x] SEO meta tags (title, description)
+- [x] Reading time estimation
+- [x] Related posts suggestions
+- [x] Social sharing buttons (accessible)
+- [x] Admin blog post editor with Markdown support
+- [x] Draft/Published/Archived status management
+- [x] Featured posts functionality
+- [x] Featured image with alt text support
+- [x] View count tracking
+- [x] Tests for blog functionality (80 tests passing)
+- [ ] RSS feed for blog
+- [ ] Sitemap generation
+- [ ] Seed content with accessibility tips articles

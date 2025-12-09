@@ -26,6 +26,9 @@ import TeamManagement from "./pages/TeamManagement";
 import Pricing from "./pages/Pricing";
 import Settings from "./pages/Settings";
 import VerifyEmail from "./pages/VerifyEmail";
+import Blog from "./pages/Blog";
+import BlogPost from "./pages/BlogPost";
+import BlogAdmin from "./pages/BlogAdmin";
 
 /** Protected Route wrapper */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -89,6 +92,9 @@ function Router() {
       <Route path="/team">{() => <ProtectedRoute component={TeamManagement} />}</Route>
       <Route path="/settings">{() => <ProtectedRoute component={Settings} />}</Route>
       <Route path="/verify-email" component={VerifyEmail} />
+      <Route path="/blog" component={Blog} />
+      <Route path="/blog/:slug" component={BlogPost} />
+      <Route path="/admin/blog">{() => <ProtectedRoute component={BlogAdmin} />}</Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

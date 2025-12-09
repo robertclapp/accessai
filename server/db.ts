@@ -12,7 +12,11 @@ import {
   generatedImages, InsertGeneratedImage,
   voiceTranscriptions, InsertVoiceTranscription,
   accessibilityReports, InsertAccessibilityReport,
-  notificationPreferences, InsertNotificationPreference
+  notificationPreferences, InsertNotificationPreference,
+  blogCategories, InsertBlogCategory,
+  blogTags, InsertBlogTag,
+  blogPosts, InsertBlogPost,
+  blogPostTags
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -859,4 +863,153 @@ export async function updateUserOnboarding(
   if (!db) return;
   
   await db.update(users).set(data).where(eq(users.id, userId));
+}
+
+
+// ============================================
+// BLOG FUNCTIONS
+// ============================================
+
+export async function getBlogCategories() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(blogCategories).orderBy(blogCategories.name);
+}
+
+export async function getBlogTags() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(blogTags).orderBy(blogTags.name);
+}
+
+export async function getPublishedBlogPosts(options: {
+  limit?: number;
+  offset?: number;
+  categorySlug?: string;
+  tagSlug?: string;
+  featured?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return { posts: [], total: 0 };
+  
+  const { limit = 10, offset = 0 } = options;
+  
+  const postsResult = await db
+    .select({
+      post: blogPosts,
+      category: blogCategories,
+      author: { id: users.id, name: users.name },
+    })
+    .from(blogPosts)
+    .leftJoin(blogCategories, eq(blogPosts.categoryId, blogCategories.id))
+    .leftJoin(users, eq(blogPosts.authorId, users.id))
+    .where(eq(blogPosts.status, "published"))
+    .orderBy(desc(blogPosts.publishedAt))
+    .limit(limit)
+    .offset(offset);
+  
+  const countResult = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(blogPosts)
+    .where(eq(blogPosts.status, "published"));
+  
+  return {
+    posts: postsResult.map(p => ({ ...p.post, category: p.category, author: p.author })),
+    total: countResult[0]?.count || 0,
+  };
+}
+
+export async function getBlogPostBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db
+    .select({ post: blogPosts, category: blogCategories, author: { id: users.id, name: users.name } })
+    .from(blogPosts)
+    .leftJoin(blogCategories, eq(blogPosts.categoryId, blogCategories.id))
+    .leftJoin(users, eq(blogPosts.authorId, users.id))
+    .where(eq(blogPosts.slug, slug))
+    .limit(1);
+  
+  if (result.length === 0) return null;
+  
+  const tags = await db
+    .select({ tag: blogTags })
+    .from(blogPostTags)
+    .innerJoin(blogTags, eq(blogPostTags.tagId, blogTags.id))
+    .where(eq(blogPostTags.postId, result[0].post.id));
+  
+  return { ...result[0].post, category: result[0].category, author: result[0].author, tags: tags.map(t => t.tag) };
+}
+
+export async function incrementBlogPostViews(postId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(blogPosts).set({ viewCount: sql`${blogPosts.viewCount} + 1` }).where(eq(blogPosts.id, postId));
+}
+
+export async function getRelatedBlogPosts(postId: number, categoryId: number | null, limit = 3) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions = [eq(blogPosts.status, "published"), sql`${blogPosts.id} != ${postId}`];
+  if (categoryId) conditions.push(eq(blogPosts.categoryId, categoryId));
+  
+  return db.select().from(blogPosts).where(and(...conditions)).orderBy(desc(blogPosts.publishedAt)).limit(limit);
+}
+
+export async function createBlogPost(post: InsertBlogPost) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(blogPosts).values(post);
+  return result[0].insertId;
+}
+
+export async function updateBlogPost(postId: number, updates: Partial<InsertBlogPost>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(blogPosts).set(updates).where(eq(blogPosts.id, postId));
+}
+
+export async function deleteBlogPost(postId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(blogPostTags).where(eq(blogPostTags.postId, postId));
+  await db.delete(blogPosts).where(eq(blogPosts.id, postId));
+}
+
+export async function getAllBlogPosts() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({ post: blogPosts, category: blogCategories })
+    .from(blogPosts)
+    .leftJoin(blogCategories, eq(blogPosts.categoryId, blogCategories.id))
+    .orderBy(desc(blogPosts.createdAt));
+}
+
+export async function upsertBlogCategory(category: InsertBlogCategory) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(blogCategories).where(eq(blogCategories.slug, category.slug)).limit(1);
+  if (existing.length > 0) return existing[0].id;
+  const result = await db.insert(blogCategories).values(category);
+  return result[0].insertId;
+}
+
+export async function upsertBlogTag(tag: InsertBlogTag) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(blogTags).where(eq(blogTags.slug, tag.slug)).limit(1);
+  if (existing.length > 0) return existing[0].id;
+  const result = await db.insert(blogTags).values(tag);
+  return result[0].insertId;
+}
+
+export async function setBlogPostTags(postId: number, tagIds: number[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(blogPostTags).where(eq(blogPostTags.postId, postId));
+  if (tagIds.length > 0) {
+    await db.insert(blogPostTags).values(tagIds.map(tagId => ({ postId, tagId })));
+  }
 }

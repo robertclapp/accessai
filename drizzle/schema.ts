@@ -395,3 +395,91 @@ export const verificationTokens = mysqlTable("verification_tokens", {
 
 export type VerificationToken = typeof verificationTokens.$inferSelect;
 export type InsertVerificationToken = typeof verificationTokens.$inferInsert;
+
+
+// ============================================
+// BLOG/CONTENT HUB TABLES
+// ============================================
+
+/**
+ * Blog categories for organizing content
+ */
+export const blogCategories = mysqlTable("blog_categories", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  slug: varchar("slug", { length: 100 }).notNull().unique(),
+  description: text("description"),
+  color: varchar("color", { length: 7 }), // Hex color for UI
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type BlogCategory = typeof blogCategories.$inferSelect;
+export type InsertBlogCategory = typeof blogCategories.$inferInsert;
+
+/**
+ * Blog tags for flexible content tagging
+ */
+export const blogTags = mysqlTable("blog_tags", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 50 }).notNull(),
+  slug: varchar("slug", { length: 50 }).notNull().unique(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type BlogTag = typeof blogTags.$inferSelect;
+export type InsertBlogTag = typeof blogTags.$inferInsert;
+
+/**
+ * Blog posts - the main content table
+ */
+export const blogPosts = mysqlTable("blog_posts", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  // Content
+  title: varchar("title", { length: 200 }).notNull(),
+  slug: varchar("slug", { length: 200 }).notNull().unique(),
+  excerpt: text("excerpt"), // Short summary for listings
+  content: text("content").notNull(), // Full markdown content
+  
+  // Media
+  featuredImage: varchar("featuredImage", { length: 500 }),
+  featuredImageAlt: varchar("featuredImageAlt", { length: 200 }), // Accessibility!
+  
+  // SEO
+  metaTitle: varchar("metaTitle", { length: 70 }), // Optimal SEO title length
+  metaDescription: varchar("metaDescription", { length: 160 }), // Optimal meta description
+  canonicalUrl: varchar("canonicalUrl", { length: 500 }),
+  
+  // Organization
+  categoryId: int("categoryId"),
+  authorId: int("authorId").notNull(),
+  
+  // Status
+  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+  featured: boolean("featured").default(false),
+  
+  // Engagement
+  viewCount: int("viewCount").default(0),
+  readingTimeMinutes: int("readingTimeMinutes").default(5),
+  
+  // Timestamps
+  publishedAt: timestamp("publishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type BlogPost = typeof blogPosts.$inferSelect;
+export type InsertBlogPost = typeof blogPosts.$inferInsert;
+
+/**
+ * Many-to-many relationship between posts and tags
+ */
+export const blogPostTags = mysqlTable("blog_post_tags", {
+  id: int("id").autoincrement().primaryKey(),
+  postId: int("postId").notNull(),
+  tagId: int("tagId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type BlogPostTag = typeof blogPostTags.$inferSelect;
+export type InsertBlogPostTag = typeof blogPostTags.$inferInsert;
