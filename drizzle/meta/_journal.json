@@ -15,6 +15,13 @@
       "when": 1765246273851,
       "tag": "0001_wealthy_lady_deathstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1765250239621,
+      "tag": "0002_light_leper_queen",
+      "breakpoints": true
     }
   ]
 }

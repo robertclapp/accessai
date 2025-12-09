@@ -22,6 +22,7 @@ import ContentCalendar from "./pages/ContentCalendar";
 import Analytics from "./pages/Analytics";
 import TeamManagement from "./pages/TeamManagement";
 import Pricing from "./pages/Pricing";
+import Settings from "./pages/Settings";
 
 /** Protected Route wrapper */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -55,6 +56,7 @@ function Router() {
       <Route path="/calendar">{() => <ProtectedRoute component={ContentCalendar} />}</Route>
       <Route path="/analytics">{() => <ProtectedRoute component={Analytics} />}</Route>
       <Route path="/team">{() => <ProtectedRoute component={TeamManagement} />}</Route>
+      <Route path="/settings">{() => <ProtectedRoute component={Settings} />}</Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

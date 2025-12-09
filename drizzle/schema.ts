@@ -322,3 +322,35 @@ export const accessibilityReports = mysqlTable("accessibility_reports", {
 
 export type AccessibilityReport = typeof accessibilityReports.$inferSelect;
 export type InsertAccessibilityReport = typeof accessibilityReports.$inferInsert;
+
+
+/**
+ * User notification preferences for email and in-app notifications.
+ */
+export const notificationPreferences = mysqlTable("notification_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  
+  // Email notifications
+  emailEnabled: boolean("emailEnabled").default(true),
+  emailDigestFrequency: mysqlEnum("emailDigestFrequency", ["realtime", "daily", "weekly", "never"]).default("daily"),
+  
+  // Notification types
+  notifyOnPostPublished: boolean("notifyOnPostPublished").default(true),
+  notifyOnPostFailed: boolean("notifyOnPostFailed").default(true),
+  notifyOnTeamInvite: boolean("notifyOnTeamInvite").default(true),
+  notifyOnApprovalRequest: boolean("notifyOnApprovalRequest").default(true),
+  notifyOnApprovalDecision: boolean("notifyOnApprovalDecision").default(true),
+  notifyOnNewFeatures: boolean("notifyOnNewFeatures").default(true),
+  notifyOnAccessibilityTips: boolean("notifyOnAccessibilityTips").default(true),
+  
+  // In-app notifications
+  inAppEnabled: boolean("inAppEnabled").default(true),
+  soundEnabled: boolean("soundEnabled").default(false),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreference = typeof notificationPreferences.$inferInsert;

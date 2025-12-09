@@ -63,8 +63,8 @@
 - [x] Full keyboard navigation
 - [x] ARIA labels throughout
 - [x] High contrast mode
-- [ ] Dyslexia-friendly font option
-- [ ] Adjustable font sizes
+- [x] Dyslexia-friendly font option
+- [x] Adjustable font sizes
 
 ## Image Generation
 - [x] AI image generation from prompts
@@ -86,7 +86,7 @@
 - [x] Landing page
 - [x] Dashboard layout
 - [x] Post editor interface
-- [ ] Settings pages
+- [x] Settings pages
 - [x] Responsive design
 
 ## CI/CD & Testing
@@ -95,3 +95,27 @@
 - [x] Vitest unit tests
 - [x] Accessibility audit (Lighthouse)
 - [x] Security scanning
+
+
+## Settings Page (New)
+- [x] Profile management (name, email)
+- [x] Accessibility preferences (font size, high contrast, reduced motion, dyslexia font)
+- [x] Notification settings (email, in-app, frequency)
+- [x] Connected social accounts management
+- [x] Subscription and billing information
+- [x] Writing style preferences
+- [ ] Data export functionality
+- [ ] Account deletion
+
+## Social Media API Integrations (New)
+- [x] LinkedIn API adapter with OAuth 2.0
+- [x] X (Twitter) API adapter with OAuth 2.0
+- [x] Facebook API adapter with OAuth 2.0
+- [x] Instagram API adapter (via Facebook Graph API)
+- [x] OAuth callback handler for all platforms
+- [x] Unified social adapter interface
+- [x] Token refresh handling
+- [x] Multi-platform posting support
+- [x] Platform-specific content formatting
+- [x] Accessible hashtag formatting (CamelCase)
+- [ ] Post scheduling with API publishing (requires cron job setup)

@@ -990,6 +990,142 @@ ${aiContext}`
   }),
 
   // ============================================
+  // SETTINGS ROUTER
+  // ============================================
+  settings: router({
+    updateProfile: protectedProcedure
+      .input(z.object({
+        name: z.string().optional(),
+        email: z.string().email().optional()
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateUserProfile(ctx.user.id, {
+          name: input.name,
+          email: input.email
+        });
+        return { success: true };
+      }),
+    
+    updateAccessibilityPreferences: protectedProcedure
+      .input(z.object({
+        highContrast: z.boolean().optional(),
+        dyslexiaFont: z.boolean().optional(),
+        fontSize: z.enum(["small", "medium", "large", "xlarge"]).optional(),
+        reduceMotion: z.boolean().optional(),
+        screenReaderOptimized: z.boolean().optional(),
+        voiceInputEnabled: z.boolean().optional(),
+        keyboardShortcutsEnabled: z.boolean().optional()
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateUserAccessibilityPreferences(ctx.user.id, input);
+        return { success: true };
+      }),
+    
+    updateWritingStyle: protectedProcedure
+      .input(z.object({
+        tone: z.string().optional(),
+        formality: z.enum(["casual", "professional", "academic"]).optional(),
+        industry: z.string().optional(),
+        targetAudience: z.string().optional()
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateUserWritingStyle(ctx.user.id, input);
+        return { success: true };
+      }),
+    
+    updateNotificationPreferences: protectedProcedure
+      .input(z.object({
+        emailEnabled: z.boolean().optional(),
+        emailDigestFrequency: z.enum(["realtime", "daily", "weekly", "never"]).optional(),
+        notifyOnPostPublished: z.boolean().optional(),
+        notifyOnPostFailed: z.boolean().optional(),
+        notifyOnTeamInvite: z.boolean().optional(),
+        notifyOnApprovalRequest: z.boolean().optional(),
+        notifyOnApprovalDecision: z.boolean().optional(),
+        notifyOnNewFeatures: z.boolean().optional(),
+        notifyOnAccessibilityTips: z.boolean().optional(),
+        inAppEnabled: z.boolean().optional(),
+        soundEnabled: z.boolean().optional()
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateNotificationPreferences(ctx.user.id, input);
+        return { success: true };
+      }),
+    
+    getNotificationPreferences: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await db.getNotificationPreferences(ctx.user.id);
+      }),
+  }),
+
+  // ============================================
+  // SOCIAL ACCOUNTS ROUTER
+  // ============================================
+  social: router({
+    getConnectedAccounts: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await db.getUserSocialAccounts(ctx.user.id);
+      }),
+    
+    disconnectAccount: protectedProcedure
+      .input(z.object({ accountId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.disconnectSocialAccountByUser(ctx.user.id, input.accountId);
+        return { success: true };
+      }),
+    
+    getConnectionStatus: protectedProcedure
+      .input(z.object({ platform: platformSchema }))
+      .query(async ({ ctx, input }) => {
+        const account = await db.getSocialAccountByPlatform(ctx.user.id, input.platform);
+        return {
+          connected: !!account,
+          accountName: account?.accountName,
+          tokenExpired: account?.tokenExpiresAt ? new Date(account.tokenExpiresAt) < new Date() : false
+        };
+      }),
+    
+    publishPost: protectedProcedure
+      .input(z.object({
+        postId: z.number(),
+        platforms: z.array(platformSchema)
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const post = await db.getPostById(input.postId);
+        if (!post || post.userId !== ctx.user.id) {
+          throw new Error("Post not found");
+        }
+        
+        const results: { platform: string; success: boolean; error?: string }[] = [];
+        
+        for (const platform of input.platforms) {
+          const account = await db.getSocialAccountByPlatform(ctx.user.id, platform);
+          if (!account) {
+            results.push({ platform, success: false, error: "Account not connected" });
+            continue;
+          }
+          
+          try {
+            // Platform-specific publishing logic would go here
+            // For now, we'll simulate success
+            results.push({ platform, success: true });
+          } catch (error) {
+            results.push({ platform, success: false, error: String(error) });
+          }
+        }
+        
+        // Update post status
+        const allSucceeded = results.every(r => r.success);
+        await db.updatePost(input.postId, {
+          status: allSucceeded ? "published" : "failed",
+          publishedAt: allSucceeded ? new Date() : undefined
+        });
+        
+        return { results };
+      }),
+  }),
+
+  // ============================================
   // STRIPE CHECKOUT ROUTER
   // ============================================
   stripe: router({

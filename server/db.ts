@@ -11,7 +11,8 @@ import {
   socialAccounts, InsertSocialAccount,
   generatedImages, InsertGeneratedImage,
   voiceTranscriptions, InsertVoiceTranscription,
-  accessibilityReports, InsertAccessibilityReport
+  accessibilityReports, InsertAccessibilityReport,
+  notificationPreferences, InsertNotificationPreference
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -648,4 +649,147 @@ export async function getUserByStripeCustomerId(stripeCustomerId: string) {
     .limit(1);
   
   return result[0];
+}
+
+
+// ============================================
+// SETTINGS & PROFILE FUNCTIONS
+// ============================================
+
+/**
+ * Update user profile information
+ */
+export async function updateUserProfile(userId: number, data: { name?: string; email?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  
+  const updateData: Record<string, unknown> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.email !== undefined) updateData.email = data.email;
+  
+  if (Object.keys(updateData).length > 0) {
+    await db.update(users).set(updateData).where(eq(users.id, userId));
+  }
+}
+
+/**
+ * Update user accessibility preferences
+ */
+export async function updateUserAccessibilityPreferences(userId: number, prefs: {
+  highContrast?: boolean;
+  dyslexiaFont?: boolean;
+  fontSize?: "small" | "medium" | "large" | "xlarge";
+  reduceMotion?: boolean;
+  screenReaderOptimized?: boolean;
+  voiceInputEnabled?: boolean;
+  keyboardShortcutsEnabled?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  
+  const user = await getUserById(userId);
+  const currentPrefs = user?.accessibilityPreferences || {};
+  const updatedPrefs = { ...currentPrefs, ...prefs };
+  
+  await db.update(users).set({ accessibilityPreferences: updatedPrefs }).where(eq(users.id, userId));
+}
+
+/**
+ * Update user writing style preferences
+ */
+export async function updateUserWritingStyle(userId: number, style: {
+  tone?: string;
+  formality?: "casual" | "professional" | "academic";
+  industry?: string;
+  targetAudience?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  
+  const user = await getUserById(userId);
+  const currentStyle = user?.writingStyleProfile || {};
+  const updatedStyle = { ...currentStyle, ...style };
+  
+  await db.update(users).set({ writingStyleProfile: updatedStyle }).where(eq(users.id, userId));
+}
+
+// ============================================
+// NOTIFICATION PREFERENCES FUNCTIONS
+// ============================================
+
+/**
+ * Get user notification preferences
+ */
+export async function getNotificationPreferences(userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(notificationPreferences).where(eq(notificationPreferences.userId, userId)).limit(1);
+  return result[0] || null;
+}
+
+/**
+ * Update user notification preferences
+ */
+export async function updateNotificationPreferences(userId: number, prefs: Partial<InsertNotificationPreference>) {
+  const db = await getDb();
+  if (!db) return;
+  
+  const existing = await getNotificationPreferences(userId);
+  
+  if (existing) {
+    await db.update(notificationPreferences).set(prefs).where(eq(notificationPreferences.userId, userId));
+  } else {
+    await db.insert(notificationPreferences).values({ userId, ...prefs });
+  }
+}
+
+// ============================================
+// SOCIAL ACCOUNTS EXTENDED FUNCTIONS
+// ============================================
+
+/**
+ * Get a specific social account by platform
+ */
+export async function getSocialAccountByPlatform(userId: number, platform: string) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db.select().from(socialAccounts)
+    .where(and(
+      eq(socialAccounts.userId, userId),
+      eq(socialAccounts.platform, platform as "linkedin" | "twitter" | "facebook" | "instagram")
+    ))
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+/**
+ * Disconnect a social account (with user verification)
+ */
+export async function disconnectSocialAccountByUser(userId: number, accountId: number) {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.delete(socialAccounts).where(
+    and(
+      eq(socialAccounts.id, accountId),
+      eq(socialAccounts.userId, userId)
+    )
+  );
+}
+
+/**
+ * Update social account tokens
+ */
+export async function updateSocialAccountTokens(accountId: number, tokens: {
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiresAt?: Date;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.update(socialAccounts).set(tokens).where(eq(socialAccounts.id, accountId));
 }
