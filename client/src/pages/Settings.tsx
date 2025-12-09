@@ -745,7 +745,8 @@ export default function Settings() {
                   { id: "linkedin", name: "LinkedIn", color: "bg-blue-600", connected: false },
                   { id: "twitter", name: "X (Twitter)", color: "bg-black", connected: false },
                   { id: "facebook", name: "Facebook", color: "bg-blue-500", connected: false },
-                  { id: "instagram", name: "Instagram", color: "bg-gradient-to-r from-purple-500 to-pink-500", connected: false }
+                  { id: "instagram", name: "Instagram", color: "bg-gradient-to-r from-purple-500 to-pink-500", connected: false },
+                  { id: "threads", name: "Threads", color: "bg-black", connected: false }
                 ].map((platform) => {
                   const connectedAccount = socialAccounts?.find(
                     (acc: { platform: string }) => acc.platform === platform.id

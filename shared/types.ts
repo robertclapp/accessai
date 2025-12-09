@@ -13,7 +13,7 @@ export * from "./_core/errors";
  */
 
 // Platform types
-export type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "all";
+export type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "all";
 
 // Post status types
 export type PostStatus = "draft" | "scheduled" | "published" | "failed";
@@ -109,6 +109,11 @@ export const PLATFORM_LIMITS: Record<string, PlatformInfo> = {
     chars: 2200,
     hashtags: 30,
     tips: "Visual-first, storytelling captions, hashtags at end"
+  },
+  threads: {
+    chars: 500,
+    hashtags: 5,
+    tips: "Conversational, authentic voice, topic tags instead of hashtags, max 5 links"
   }
 };
 

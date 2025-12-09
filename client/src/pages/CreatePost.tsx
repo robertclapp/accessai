@@ -34,13 +34,14 @@ import { useLocation } from "wouter";
 import VoiceRecorder from "@/components/VoiceRecorder";
 import AccessibilityChecker from "@/components/AccessibilityChecker";
 
-type Platform = "linkedin" | "twitter" | "facebook" | "instagram";
+type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads";
 
 const PLATFORMS: Array<{ id: Platform; name: string; maxChars: number }> = [
   { id: "linkedin", name: "LinkedIn", maxChars: 3000 },
   { id: "twitter", name: "X (Twitter)", maxChars: 280 },
   { id: "facebook", name: "Facebook", maxChars: 63206 },
-  { id: "instagram", name: "Instagram", maxChars: 2200 }
+  { id: "instagram", name: "Instagram", maxChars: 2200 },
+  { id: "threads", name: "Threads", maxChars: 500 }
 ];
 
 export default function CreatePost() {

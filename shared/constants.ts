@@ -19,6 +19,7 @@ export const PLATFORM_CHAR_LIMITS = {
   twitter: 280,
   facebook: 63206,
   instagram: 2200,
+  threads: 500,
   all: 280 // Use most restrictive for "all" platform
 } as const;
 
@@ -30,6 +31,7 @@ export const PLATFORM_HASHTAG_LIMITS = {
   twitter: 2,
   facebook: 3,
   instagram: 30,
+  threads: 5,
   all: 2
 } as const;
 
@@ -41,6 +43,7 @@ export const PLATFORM_DISPLAY_NAMES = {
   twitter: "X (Twitter)",
   facebook: "Facebook",
   instagram: "Instagram",
+  threads: "Threads",
   all: "All Platforms"
 } as const;
 
@@ -52,6 +55,7 @@ export const PLATFORM_TIPS = {
   twitter: "Concise, punchy, conversation starters work well",
   facebook: "Personal, engaging, questions drive comments",
   instagram: "Visual-first, storytelling captions, hashtags at end",
+  threads: "Conversational, authentic voice, topic tags instead of hashtags, max 5 links",
   all: "Keep it concise to fit all platforms"
 } as const;
 
@@ -282,6 +286,7 @@ export const API_RATE_LIMITS = {
   twitter: 300,
   facebook: 200,
   instagram: 200,
+  threads: 250, // 250 posts per 24 hours
   openai: 60
 } as const;
 

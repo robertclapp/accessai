@@ -24,7 +24,7 @@ import {
 // VALIDATION SCHEMAS
 // ============================================
 
-const platformSchema = z.enum(["linkedin", "twitter", "facebook", "instagram", "all"]);
+const platformSchema = z.enum(["linkedin", "twitter", "facebook", "instagram", "threads", "all"]);
 const postStatusSchema = z.enum(["draft", "scheduled", "published", "failed"]);
 const knowledgeBaseTypeSchema = z.enum(["brand_guideline", "swipe_file", "ai_instruction", "testimonial", "faq", "other"]);
 const teamRoleSchema = z.enum(["owner", "admin", "editor", "viewer"]);
@@ -159,6 +159,11 @@ const platformLimits: Record<string, { chars: number; hashtags: number; tips: st
     chars: 2200,
     hashtags: 30,
     tips: "Visual-first, storytelling captions, hashtags at end"
+  },
+  threads: {
+    chars: 500,
+    hashtags: 5,
+    tips: "Conversational, authentic voice, topic tags instead of hashtags, max 5 links"
   }
 };
 

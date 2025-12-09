@@ -14,8 +14,9 @@ import { LinkedInAdapter } from "./linkedin";
 import { TwitterAdapter } from "./twitter";
 import { FacebookAdapter } from "./facebook";
 import { InstagramAdapter } from "./instagram";
+import { ThreadsAdapter } from "./threads";
 
-export type Platform = "linkedin" | "twitter" | "facebook" | "instagram";
+export type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads";
 
 export interface SocialPost {
   content: string;
@@ -80,6 +81,8 @@ export function getAdapter(platform: Platform): SocialAdapter {
       return new FacebookAdapter();
     case "instagram":
       return new InstagramAdapter();
+    case "threads":
+      return new ThreadsAdapter();
     default:
       throw new Error(`Unsupported platform: ${platform}`);
   }
@@ -120,7 +123,8 @@ export function formatContentForPlatform(content: string, platform: Platform): s
     linkedin: 3000,
     twitter: 280,
     facebook: 63206,
-    instagram: 2200
+    instagram: 2200,
+    threads: 500
   };
   
   const limit = limits[platform];

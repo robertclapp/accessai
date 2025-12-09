@@ -269,3 +269,15 @@
 - [x] Admin interface for managing featured logos
 - [x] Integration into landing page (components render when data exists)
 - [x] Tests for testimonials functionality (105 tests passing)
+
+
+## Threads Integration (New)
+- [x] Research Threads API requirements and authentication flow
+- [x] Create Threads API adapter with OAuth 2.0
+- [x] Add Threads to platform enum in database schema
+- [x] Implement Threads OAuth callback handler
+- [x] Add Threads-specific content formatting (500 char limit, topic tags)
+- [x] Update post builder UI to include Threads option
+- [x] Update settings page for Threads account connection
+- [x] Add Threads to scheduled posting system
+- [x] Write tests for Threads integration (122 tests passing)

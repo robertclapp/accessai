@@ -72,7 +72,7 @@ export const posts = mysqlTable("posts", {
   // Content
   title: varchar("title", { length: 255 }),
   content: text("content").notNull(),
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "all"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "all"]).notNull(),
   
   // Status and scheduling
   status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
@@ -136,7 +136,7 @@ export const templates = mysqlTable("templates", {
   }>(),
   
   // Platform compatibility
-  platforms: json("platforms").$type<("linkedin" | "twitter" | "facebook" | "instagram")[]>(),
+  platforms: json("platforms").$type<("linkedin" | "twitter" | "facebook" | "instagram" | "threads")[]>(),
   
   // Accessibility
   isAccessible: boolean("isAccessible").default(true),
@@ -256,7 +256,7 @@ export const socialAccounts = mysqlTable("social_accounts", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
   
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads"]).notNull(),
   accountId: varchar("accountId", { length: 255 }).notNull(),
   accountName: varchar("accountName", { length: 255 }),
   
