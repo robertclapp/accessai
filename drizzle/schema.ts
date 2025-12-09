@@ -1,22 +1,47 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, boolean, json } from "drizzle-orm/mysql-core";
 
 /**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
+ * Core user table with accessibility preferences and subscription management.
+ * Extended from base template to support AccessAI features.
  */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  
+  // Subscription management
+  subscriptionTier: mysqlEnum("subscriptionTier", ["free", "creator", "pro"]).default("free").notNull(),
+  stripeCustomerId: varchar("stripeCustomerId", { length: 255 }),
+  stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
+  subscriptionStatus: mysqlEnum("subscriptionStatus", ["active", "canceled", "past_due", "trialing"]).default("active"),
+  
+  // Accessibility preferences stored as JSON for flexibility
+  accessibilityPreferences: json("accessibilityPreferences").$type<{
+    highContrast?: boolean;
+    dyslexiaFont?: boolean;
+    fontSize?: "small" | "medium" | "large" | "xlarge";
+    reduceMotion?: boolean;
+    screenReaderOptimized?: boolean;
+    voiceInputEnabled?: boolean;
+    keyboardShortcutsEnabled?: boolean;
+  }>(),
+  
+  // AI personalization - stores writing style preferences
+  writingStyleProfile: json("writingStyleProfile").$type<{
+    tone?: string;
+    formality?: "casual" | "professional" | "academic";
+    industry?: string;
+    targetAudience?: string;
+    sampleContent?: string[];
+  }>(),
+  
+  // Usage tracking for free tier limits
+  monthlyPostsGenerated: int("monthlyPostsGenerated").default(0),
+  lastPostResetDate: timestamp("lastPostResetDate"),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -25,4 +50,275 @@ export const users = mysqlTable("users", {
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
-// TODO: Add your tables here
+/**
+ * Social media posts with multi-platform support and accessibility scoring.
+ */
+export const posts = mysqlTable("posts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  teamId: int("teamId"), // Optional team association
+  
+  // Content
+  title: varchar("title", { length: 255 }),
+  content: text("content").notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "all"]).notNull(),
+  
+  // Status and scheduling
+  status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
+  scheduledAt: timestamp("scheduledAt"),
+  publishedAt: timestamp("publishedAt"),
+  
+  // Accessibility
+  accessibilityScore: int("accessibilityScore"), // 0-100 score
+  accessibilityIssues: json("accessibilityIssues").$type<{
+    type: string;
+    message: string;
+    severity: "error" | "warning" | "info";
+    suggestion?: string;
+  }[]>(),
+  
+  // Media attachments
+  mediaUrls: json("mediaUrls").$type<string[]>(),
+  altTexts: json("altTexts").$type<Record<string, string>>(), // URL -> alt text mapping
+  
+  // Analytics (updated after publishing)
+  analytics: json("analytics").$type<{
+    impressions?: number;
+    engagements?: number;
+    clicks?: number;
+    shares?: number;
+    comments?: number;
+    likes?: number;
+  }>(),
+  
+  // Metadata
+  hashtags: json("hashtags").$type<string[]>(),
+  templateId: int("templateId"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Post = typeof posts.$inferSelect;
+export type InsertPost = typeof posts.$inferInsert;
+
+/**
+ * Content templates and frameworks for the smart post builder.
+ */
+export const templates = mysqlTable("templates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"), // Null for system templates
+  
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  category: mysqlEnum("category", ["educational", "promotional", "personal_story", "engagement", "announcement", "custom"]).default("custom"),
+  
+  // Template structure
+  contentStructure: json("contentStructure").$type<{
+    sections: {
+      name: string;
+      placeholder: string;
+      required: boolean;
+      aiPrompt?: string;
+    }[];
+    framework?: "aida" | "pas" | "slay" | "hook_story_offer" | "custom";
+  }>(),
+  
+  // Platform compatibility
+  platforms: json("platforms").$type<("linkedin" | "twitter" | "facebook" | "instagram")[]>(),
+  
+  // Accessibility
+  isAccessible: boolean("isAccessible").default(true),
+  accessibilityNotes: text("accessibilityNotes"),
+  
+  isPublic: boolean("isPublic").default(false),
+  usageCount: int("usageCount").default(0),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Template = typeof templates.$inferSelect;
+export type InsertTemplate = typeof templates.$inferInsert;
+
+/**
+ * Knowledge base for storing brand guidelines, swipe files, and AI instructions.
+ */
+export const knowledgeBase = mysqlTable("knowledge_base", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  teamId: int("teamId"), // Optional team sharing
+  
+  title: varchar("title", { length: 255 }).notNull(),
+  content: text("content").notNull(),
+  type: mysqlEnum("type", ["brand_guideline", "swipe_file", "ai_instruction", "testimonial", "faq", "other"]).notNull(),
+  
+  // Categorization
+  tags: json("tags").$type<string[]>(),
+  
+  // AI usage settings
+  includeInAiContext: boolean("includeInAiContext").default(true),
+  priority: int("priority").default(0), // Higher priority = more likely to be included in AI context
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type KnowledgeBaseItem = typeof knowledgeBase.$inferSelect;
+export type InsertKnowledgeBaseItem = typeof knowledgeBase.$inferInsert;
+
+/**
+ * Teams for collaboration features.
+ */
+export const teams = mysqlTable("teams", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  ownerId: int("ownerId").notNull(),
+  
+  // Team settings
+  settings: json("settings").$type<{
+    requireApproval?: boolean;
+    defaultPlatforms?: string[];
+    brandColors?: string[];
+  }>(),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Team = typeof teams.$inferSelect;
+export type InsertTeam = typeof teams.$inferInsert;
+
+/**
+ * Team membership with roles and permissions.
+ */
+export const teamMembers = mysqlTable("team_members", {
+  id: int("id").autoincrement().primaryKey(),
+  teamId: int("teamId").notNull(),
+  userId: int("userId").notNull(),
+  
+  role: mysqlEnum("role", ["owner", "admin", "editor", "viewer"]).default("viewer").notNull(),
+  
+  // Permissions override (if null, use role defaults)
+  permissions: json("permissions").$type<{
+    canCreate?: boolean;
+    canEdit?: boolean;
+    canDelete?: boolean;
+    canPublish?: boolean;
+    canApprove?: boolean;
+    canManageMembers?: boolean;
+  }>(),
+  
+  invitedAt: timestamp("invitedAt").defaultNow().notNull(),
+  acceptedAt: timestamp("acceptedAt"),
+});
+
+export type TeamMember = typeof teamMembers.$inferSelect;
+export type InsertTeamMember = typeof teamMembers.$inferInsert;
+
+/**
+ * Approval workflow for team collaboration.
+ */
+export const approvals = mysqlTable("approvals", {
+  id: int("id").autoincrement().primaryKey(),
+  postId: int("postId").notNull(),
+  teamId: int("teamId").notNull(),
+  
+  requestedById: int("requestedById").notNull(),
+  reviewedById: int("reviewedById"),
+  
+  status: mysqlEnum("status", ["pending", "approved", "rejected", "changes_requested"]).default("pending").notNull(),
+  comments: text("comments"),
+  
+  requestedAt: timestamp("requestedAt").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewedAt"),
+});
+
+export type Approval = typeof approvals.$inferSelect;
+export type InsertApproval = typeof approvals.$inferInsert;
+
+/**
+ * Social media account connections for direct posting.
+ */
+export const socialAccounts = mysqlTable("social_accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram"]).notNull(),
+  accountId: varchar("accountId", { length: 255 }).notNull(),
+  accountName: varchar("accountName", { length: 255 }),
+  
+  // Tokens stored encrypted
+  accessToken: text("accessToken"),
+  refreshToken: text("refreshToken"),
+  tokenExpiresAt: timestamp("tokenExpiresAt"),
+  
+  isActive: boolean("isActive").default(true),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type SocialAccount = typeof socialAccounts.$inferSelect;
+export type InsertSocialAccount = typeof socialAccounts.$inferInsert;
+
+/**
+ * Generated images for posts.
+ */
+export const generatedImages = mysqlTable("generated_images", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  postId: int("postId"),
+  
+  prompt: text("prompt").notNull(),
+  imageUrl: varchar("imageUrl", { length: 500 }).notNull(),
+  fileKey: varchar("fileKey", { length: 255 }).notNull(),
+  
+  altText: text("altText"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GeneratedImage = typeof generatedImages.$inferSelect;
+export type InsertGeneratedImage = typeof generatedImages.$inferInsert;
+
+/**
+ * Voice transcription history for the voice-to-text feature.
+ */
+export const voiceTranscriptions = mysqlTable("voice_transcriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  postId: int("postId"),
+  
+  audioUrl: varchar("audioUrl", { length: 500 }),
+  transcribedText: text("transcribedText").notNull(),
+  language: varchar("language", { length: 10 }),
+  duration: int("duration"), // Duration in seconds
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type VoiceTranscription = typeof voiceTranscriptions.$inferSelect;
+export type InsertVoiceTranscription = typeof voiceTranscriptions.$inferInsert;
+
+/**
+ * Accessibility issue reports from users.
+ */
+export const accessibilityReports = mysqlTable("accessibility_reports", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  
+  issueType: mysqlEnum("issueType", ["navigation", "screen_reader", "keyboard", "visual", "cognitive", "other"]).notNull(),
+  description: text("description").notNull(),
+  pageUrl: varchar("pageUrl", { length: 500 }),
+  
+  status: mysqlEnum("status", ["open", "in_progress", "resolved", "closed"]).default("open").notNull(),
+  resolution: text("resolution"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AccessibilityReport = typeof accessibilityReports.$inferSelect;
+export type InsertAccessibilityReport = typeof accessibilityReports.$inferInsert;

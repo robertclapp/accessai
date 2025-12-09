@@ -1,35 +1,70 @@
+/**
+ * AccessAI Main Application
+ * 
+ * Accessible AI-powered social media content creation platform.
+ */
+
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { useAuth } from "./_core/hooks/useAuth";
+import { Loader2 } from "lucide-react";
+
+// Pages
 import Home from "./pages/Home";
+import Dashboard from "./pages/Dashboard";
+import CreatePost from "./pages/CreatePost";
+import KnowledgeBase from "./pages/KnowledgeBase";
+import ContentCalendar from "./pages/ContentCalendar";
+import Analytics from "./pages/Analytics";
+import TeamManagement from "./pages/TeamManagement";
+import Pricing from "./pages/Pricing";
+
+/** Protected Route wrapper */
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { isAuthenticated, loading } = useAuth();
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" role="status" aria-label="Loading">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="sr-only">Loading...</span>
+      </div>
+    );
+  }
+  
+  if (!isAuthenticated) {
+    window.location.href = "/";
+    return null;
+  }
+  
+  return <Component />;
+}
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
+      <Route path="/" component={Home} />
+      <Route path="/pricing" component={Pricing} />
+      <Route path="/dashboard">{() => <ProtectedRoute component={Dashboard} />}</Route>
+      <Route path="/create">{() => <ProtectedRoute component={CreatePost} />}</Route>
+      <Route path="/knowledge">{() => <ProtectedRoute component={KnowledgeBase} />}</Route>
+      <Route path="/calendar">{() => <ProtectedRoute component={ContentCalendar} />}</Route>
+      <Route path="/analytics">{() => <ProtectedRoute component={Analytics} />}</Route>
+      <Route path="/team">{() => <ProtectedRoute component={TeamManagement} />}</Route>
+      <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
+      <ThemeProvider defaultTheme="light">
         <TooltipProvider>
           <Toaster />
           <Router />
