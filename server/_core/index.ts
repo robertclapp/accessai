@@ -5,6 +5,8 @@ import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
+import rssRouter from "../rss";
+import sitemapRouter from "../sitemap";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -35,6 +37,10 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   // OAuth callback under /api/oauth/callback
   registerOAuthRoutes(app);
+  
+  // RSS feed and sitemap for SEO
+  app.use(rssRouter);
+  app.use(sitemapRouter);
   // tRPC API
   app.use(
     "/api/trpc",
