@@ -16,7 +16,9 @@ import {
   blogCategories, InsertBlogCategory,
   blogTags, InsertBlogTag,
   blogPosts, InsertBlogPost,
-  blogPostTags
+  blogPostTags,
+  testimonials, InsertTestimonial,
+  featuredPartners, InsertFeaturedPartner
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1012,4 +1014,140 @@ export async function setBlogPostTags(postId: number, tagIds: number[]) {
   if (tagIds.length > 0) {
     await db.insert(blogPostTags).values(tagIds.map(tagId => ({ postId, tagId })));
   }
+}
+
+
+// ============================================================================
+// TESTIMONIALS & SOCIAL PROOF
+// ============================================================================
+
+/**
+ * Get all active testimonials for public display
+ */
+export async function getActiveTestimonials() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(testimonials)
+    .where(eq(testimonials.isActive, true))
+    .orderBy(testimonials.displayOrder);
+}
+
+/**
+ * Get featured testimonials for homepage highlight
+ */
+export async function getFeaturedTestimonials(limit = 3) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(testimonials)
+    .where(and(eq(testimonials.isActive, true), eq(testimonials.featured, true)))
+    .orderBy(testimonials.displayOrder)
+    .limit(limit);
+}
+
+/**
+ * Get all testimonials for admin management
+ */
+export async function getAllTestimonials() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(testimonials)
+    .orderBy(testimonials.displayOrder);
+}
+
+/**
+ * Create a new testimonial
+ */
+export async function createTestimonial(data: InsertTestimonial) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(testimonials).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Update an existing testimonial
+ */
+export async function updateTestimonial(id: number, data: Partial<InsertTestimonial>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(testimonials).set(data).where(eq(testimonials.id, id));
+}
+
+/**
+ * Delete a testimonial
+ */
+export async function deleteTestimonial(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(testimonials).where(eq(testimonials.id, id));
+}
+
+/**
+ * Get all active featured partners for public display
+ */
+export async function getActiveFeaturedPartners() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(featuredPartners)
+    .where(eq(featuredPartners.isActive, true))
+    .orderBy(featuredPartners.displayOrder);
+}
+
+/**
+ * Get all featured partners for admin management
+ */
+export async function getAllFeaturedPartners() {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(featuredPartners)
+    .orderBy(featuredPartners.displayOrder);
+}
+
+/**
+ * Create a new featured partner
+ */
+export async function createFeaturedPartner(data: InsertFeaturedPartner) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(featuredPartners).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Update an existing featured partner
+ */
+export async function updateFeaturedPartner(id: number, data: Partial<InsertFeaturedPartner>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.update(featuredPartners).set(data).where(eq(featuredPartners.id, id));
+}
+
+/**
+ * Delete a featured partner
+ */
+export async function deleteFeaturedPartner(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(featuredPartners).where(eq(featuredPartners.id, id));
 }

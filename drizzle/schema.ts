@@ -483,3 +483,60 @@ export const blogPostTags = mysqlTable("blog_post_tags", {
 
 export type BlogPostTag = typeof blogPostTags.$inferSelect;
 export type InsertBlogPostTag = typeof blogPostTags.$inferInsert;
+
+
+/**
+ * Testimonials table for social proof on landing page.
+ * Stores customer testimonials with ratings and display preferences.
+ */
+export const testimonials = mysqlTable("testimonials", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Customer's full name */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Customer's job title or role */
+  role: varchar("role", { length: 255 }),
+  /** Customer's company or organization */
+  company: varchar("company", { length: 255 }),
+  /** The testimonial quote */
+  quote: text("quote").notNull(),
+  /** URL to customer's avatar/photo */
+  avatarUrl: varchar("avatarUrl", { length: 500 }),
+  /** Star rating (1-5) */
+  rating: int("rating").default(5),
+  /** Whether this testimonial is featured/highlighted */
+  featured: boolean("featured").default(false),
+  /** Display order for sorting */
+  displayOrder: int("displayOrder").default(0),
+  /** Whether the testimonial is active/visible */
+  isActive: boolean("isActive").default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Testimonial = typeof testimonials.$inferSelect;
+export type InsertTestimonial = typeof testimonials.$inferInsert;
+
+/**
+ * Featured partners/media logos for "As Seen In" or "Trusted By" sections.
+ * Stores logos of media outlets, partners, or notable customers.
+ */
+export const featuredPartners = mysqlTable("featured_partners", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Partner/media outlet name */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** URL to the partner's logo image */
+  logoUrl: varchar("logoUrl", { length: 500 }).notNull(),
+  /** Optional link to partner's website or article */
+  websiteUrl: varchar("websiteUrl", { length: 500 }),
+  /** Type of partner (media, customer, partner, integration) */
+  partnerType: mysqlEnum("partnerType", ["media", "customer", "partner", "integration"]).default("partner"),
+  /** Display order for sorting */
+  displayOrder: int("displayOrder").default(0),
+  /** Whether the partner is active/visible */
+  isActive: boolean("isActive").default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type FeaturedPartner = typeof featuredPartners.$inferSelect;
+export type InsertFeaturedPartner = typeof featuredPartners.$inferInsert;

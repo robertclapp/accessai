@@ -1650,6 +1650,175 @@ ${aiContext}`
         return { id };
       }),
   }),
+
+  // ============================================
+  // TESTIMONIALS & SOCIAL PROOF
+  // ============================================
+  testimonials: router({
+    /**
+     * Get all active testimonials for public display
+     */
+    getActive: publicProcedure.query(async () => {
+      return db.getActiveTestimonials();
+    }),
+
+    /**
+     * Get featured testimonials for homepage
+     */
+    getFeatured: publicProcedure
+      .input(z.object({ limit: z.number().min(1).max(10).optional() }).optional())
+      .query(async ({ input }) => {
+        return db.getFeaturedTestimonials(input?.limit ?? 3);
+      }),
+
+    /**
+     * Get all testimonials for admin management
+     */
+    getAll: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new Error("Admin access required");
+      }
+      return db.getAllTestimonials();
+    }),
+
+    /**
+     * Create a new testimonial (admin only)
+     */
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        role: z.string().max(255).optional(),
+        company: z.string().max(255).optional(),
+        quote: z.string().min(10).max(1000),
+        avatarUrl: z.string().url().optional(),
+        rating: z.number().min(1).max(5).optional(),
+        featured: z.boolean().optional(),
+        displayOrder: z.number().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+        const id = await db.createTestimonial(input);
+        return { id };
+      }),
+
+    /**
+     * Update an existing testimonial (admin only)
+     */
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(255).optional(),
+        role: z.string().max(255).nullable().optional(),
+        company: z.string().max(255).nullable().optional(),
+        quote: z.string().min(10).max(1000).optional(),
+        avatarUrl: z.string().url().nullable().optional(),
+        rating: z.number().min(1).max(5).nullable().optional(),
+        featured: z.boolean().nullable().optional(),
+        displayOrder: z.number().nullable().optional(),
+        isActive: z.boolean().nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+        const { id, ...data } = input;
+        await db.updateTestimonial(id, data);
+        return { success: true };
+      }),
+
+    /**
+     * Delete a testimonial (admin only)
+     */
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+        await db.deleteTestimonial(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // ============================================
+  // FEATURED PARTNERS
+  // ============================================
+  partners: router({
+    /**
+     * Get all active featured partners for public display
+     */
+    getActive: publicProcedure.query(async () => {
+      return db.getActiveFeaturedPartners();
+    }),
+
+    /**
+     * Get all featured partners for admin management
+     */
+    getAll: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new Error("Admin access required");
+      }
+      return db.getAllFeaturedPartners();
+    }),
+
+    /**
+     * Create a new featured partner (admin only)
+     */
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        logoUrl: z.string().url(),
+        websiteUrl: z.string().url().optional(),
+        partnerType: z.enum(["media", "customer", "partner", "integration"]).optional(),
+        displayOrder: z.number().optional(),
+        isActive: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+        const id = await db.createFeaturedPartner(input);
+        return { id };
+      }),
+
+    /**
+     * Update an existing featured partner (admin only)
+     */
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(255).optional(),
+        logoUrl: z.string().url().optional(),
+        websiteUrl: z.string().url().nullable().optional(),
+        partnerType: z.enum(["media", "customer", "partner", "integration"]).nullable().optional(),
+        displayOrder: z.number().nullable().optional(),
+        isActive: z.boolean().nullable().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+        const { id, ...data } = input;
+        await db.updateFeaturedPartner(id, data);
+        return { success: true };
+      }),
+
+    /**
+     * Delete a featured partner (admin only)
+     */
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Admin access required");
+        }
+        await db.deleteFeaturedPartner(input.id);
+        return { success: true };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

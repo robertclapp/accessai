@@ -24,6 +24,8 @@ import {
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Link } from "wouter";
 import { getLoginUrl } from "@/const";
+import { TestimonialsSection } from "@/components/TestimonialsSection";
+import { FeaturedPartnersSection } from "@/components/FeaturedPartnersSection";
 
 const features = [
   { icon: Mic, title: "Voice-to-Text Creation", description: "Create content hands-free using our Whisper-powered voice recognition.", color: "bg-purple-500" },
@@ -34,11 +36,7 @@ const features = [
   { icon: Users, title: "Team Collaboration", description: "Work together with roles, permissions, and approval workflows.", color: "bg-indigo-500" }
 ];
 
-const testimonials = [
-  { quote: "AccessAI has transformed how I create content. The voice input feature means I can work even when my hands are tired.", author: "Sarah M.", role: "Content Creator with RSI", rating: 5 },
-  { quote: "Finally, a tool that takes accessibility seriously. The WCAG checker has helped me reach a much wider audience.", author: "James K.", role: "Disability Advocate", rating: 5 },
-  { quote: "The AI learns my style perfectly. It's like having a writing assistant who truly understands my brand.", author: "Maria L.", role: "Marketing Manager", rating: 5 }
-];
+// Testimonials are now loaded dynamically from the database via TestimonialsSection component
 
 export default function Home() {
   const { isAuthenticated } = useAuth();
@@ -145,25 +143,11 @@ export default function Home() {
           </div>
         </section>
         
-        <section id="testimonials" className="py-20" aria-labelledby="testimonials-heading">
-          <div className="container">
-            <div className="text-center mb-12">
-              <Badge variant="outline" className="mb-4">Testimonials</Badge>
-              <h2 id="testimonials-heading" className="text-3xl font-bold mb-4">Loved by Content Creators</h2>
-            </div>
-            <div className="grid gap-6 md:grid-cols-3">
-              {testimonials.map((testimonial, index) => (
-                <Card key={index} className="h-full">
-                  <CardContent className="pt-6 flex flex-col h-full">
-                    <div className="flex gap-1 mb-4">{Array.from({ length: testimonial.rating }).map((_, i) => (<Star key={i} className="h-5 w-5 fill-yellow-400 text-yellow-400" />))}</div>
-                    <blockquote className="flex-1 text-muted-foreground mb-4">"{testimonial.quote}"</blockquote>
-                    <div><div className="font-semibold">{testimonial.author}</div><div className="text-sm text-muted-foreground">{testimonial.role}</div></div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
+        {/* Featured Partners / As Seen In Section */}
+        <FeaturedPartnersSection />
+        
+        {/* Dynamic Testimonials Section */}
+        <TestimonialsSection />
         
         <section className="py-20 bg-primary text-primary-foreground" aria-labelledby="cta-heading">
           <div className="container text-center">

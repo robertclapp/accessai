@@ -29,6 +29,7 @@ import VerifyEmail from "./pages/VerifyEmail";
 import Blog from "./pages/Blog";
 import BlogPost from "./pages/BlogPost";
 import BlogAdmin from "./pages/BlogAdmin";
+import TestimonialsAdmin from "./pages/TestimonialsAdmin";
 
 /** Protected Route wrapper */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -95,6 +96,7 @@ function Router() {
       <Route path="/blog" component={Blog} />
       <Route path="/blog/:slug" component={BlogPost} />
       <Route path="/admin/blog">{() => <ProtectedRoute component={BlogAdmin} />}</Route>
+      <Route path="/admin/testimonials">{() => <ProtectedRoute component={TestimonialsAdmin} />}</Route>
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
