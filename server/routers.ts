@@ -1180,6 +1180,130 @@ ${aiContext}`
         };
       }),
   }),
+
+  // ============================================
+  // SCHEDULER ROUTER
+  // ============================================
+  scheduler: router({
+    /**
+     * Get the current scheduler status
+     */
+    getStatus: protectedProcedure
+      .query(async ({ ctx }) => {
+        // Only allow admins to view scheduler status
+        if (ctx.user.role !== "admin") {
+          throw new Error("Unauthorized");
+        }
+        
+        const { getSchedulerStatus } = await import("./services/scheduledPosting");
+        return getSchedulerStatus();
+      }),
+    
+    /**
+     * Start the scheduler (admin only)
+     */
+    start: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Unauthorized");
+        }
+        
+        const { startScheduler } = await import("./services/scheduledPosting");
+        startScheduler();
+        return { success: true, message: "Scheduler started" };
+      }),
+    
+    /**
+     * Stop the scheduler (admin only)
+     */
+    stop: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Unauthorized");
+        }
+        
+        const { stopScheduler } = await import("./services/scheduledPosting");
+        stopScheduler();
+        return { success: true, message: "Scheduler stopped" };
+      }),
+    
+    /**
+     * Manually trigger a batch processing run (admin only)
+     */
+    triggerBatch: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Unauthorized");
+        }
+        
+        const { triggerBatch } = await import("./services/scheduledPosting");
+        await triggerBatch();
+        return { success: true, message: "Batch processing triggered" };
+      }),
+    
+    /**
+     * Reset scheduler statistics (admin only)
+     */
+    resetStats: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        if (ctx.user.role !== "admin") {
+          throw new Error("Unauthorized");
+        }
+        
+        const { resetStats } = await import("./services/scheduledPosting");
+        resetStats();
+        return { success: true, message: "Statistics reset" };
+      }),
+  }),
+
+  // ============================================
+  // DATA EXPORT ROUTER
+  // ============================================
+  export: router({
+    /**
+     * Get available export types with descriptions
+     */
+    getTypes: protectedProcedure
+      .query(async () => {
+        const { getExportTypes } = await import("./services/dataExport");
+        return getExportTypes();
+      }),
+    
+    /**
+     * Export user data in specified format
+     */
+    exportData: protectedProcedure
+      .input(z.object({
+        type: z.enum(["posts", "analytics", "knowledge_base", "teams", "images", "all"]),
+        format: z.enum(["csv", "json"]),
+        dateRange: z.object({
+          start: z.date(),
+          end: z.date()
+        }).optional(),
+        includeMetadata: z.boolean().default(true)
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { exportUserData } = await import("./services/dataExport");
+        
+        const result = await exportUserData({
+          userId: ctx.user.id,
+          type: input.type,
+          format: input.format,
+          dateRange: input.dateRange,
+          includeMetadata: input.includeMetadata
+        });
+        
+        if (!result.success) {
+          throw new Error(result.error || "Export failed");
+        }
+        
+        return {
+          fileUrl: result.fileUrl,
+          fileName: result.fileName,
+          recordCount: result.recordCount
+        };
+      }),
+  }),
 });
 
 export type AppRouter = typeof appRouter;

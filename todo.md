@@ -104,7 +104,7 @@
 - [x] Connected social accounts management
 - [x] Subscription and billing information
 - [x] Writing style preferences
-- [ ] Data export functionality
+- [x] Data export functionality
 - [ ] Account deletion
 
 ## Social Media API Integrations (New)
@@ -118,4 +118,35 @@
 - [x] Multi-platform posting support
 - [x] Platform-specific content formatting
 - [x] Accessible hashtag formatting (CamelCase)
-- [ ] Post scheduling with API publishing (requires cron job setup)
+- [x] Post scheduling with API publishing
+
+
+## Data Export (New)
+- [x] Export posts as CSV
+- [x] Export posts as JSON
+- [x] Export analytics data
+- [x] Export knowledge base items
+- [x] Export team data
+- [x] Download generated images
+- [x] Upload to S3 for download
+- [x] UI for selecting export type and format
+
+## Scheduled Posting System (New)
+- [x] Background worker for scheduled posts
+- [x] Batch processing of due posts
+- [x] Token refresh handling
+- [x] Retry logic for failed posts
+- [x] Scheduler status monitoring
+- [x] Admin controls (start/stop/trigger)
+- [x] Statistics tracking
+- [x] Owner notifications for failures
+
+## Code Refactoring (New)
+- [x] Add comprehensive JSDoc comments
+- [x] Improve error handling with custom error classes
+- [x] Add input validation helpers
+- [x] Add logging infrastructure
+- [x] Improve type safety
+- [x] Extract reusable utilities
+- [x] Add constants file for magic numbers
+- [x] Comprehensive test coverage (34 tests passing)

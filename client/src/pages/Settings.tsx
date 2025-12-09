@@ -206,10 +206,34 @@ export default function Settings() {
     disconnectAccountMutation.mutate({ accountId });
   };
   
+  // Export data state
+  const [exportType, setExportType] = useState<"posts" | "analytics" | "knowledge_base" | "teams" | "images" | "all">("all");
+  const [exportFormat, setExportFormat] = useState<"csv" | "json">("json");
+  const [isExporting, setIsExporting] = useState(false);
+  
+  const exportMutation = trpc.export.exportData.useMutation({
+    onSuccess: (data) => {
+      setIsExporting(false);
+      if (data.fileUrl) {
+        // Open download in new tab
+        window.open(data.fileUrl, "_blank");
+        toast.success(`Export complete! ${data.recordCount} records exported.`);
+      }
+    },
+    onError: (error) => {
+      setIsExporting(false);
+      toast.error(`Export failed: ${error.message}`);
+    }
+  });
+  
   const handleExportData = () => {
+    setIsExporting(true);
     toast.info("Preparing your data export...");
-    // This would trigger a data export
-    window.location.href = "/api/settings/export-data";
+    exportMutation.mutate({
+      type: exportType,
+      format: exportFormat,
+      includeMetadata: true
+    });
   };
   
   const handleDeleteAccount = () => {
@@ -874,11 +898,63 @@ export default function Settings() {
               <div className="space-y-4">
                 <h3 className="font-medium">Data Export</h3>
                 <p className="text-sm text-muted-foreground">
-                  Download a copy of all your data including posts, templates, and settings.
+                  Download a copy of your data in CSV or JSON format.
                 </p>
-                <Button variant="outline" onClick={handleExportData}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Export My Data
+                
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="export-type">Export Type</Label>
+                    <Select 
+                      value={exportType} 
+                      onValueChange={(v) => setExportType(v as typeof exportType)}
+                    >
+                      <SelectTrigger id="export-type">
+                        <SelectValue placeholder="Select data to export" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Full Export (All Data)</SelectItem>
+                        <SelectItem value="posts">Posts Only</SelectItem>
+                        <SelectItem value="analytics">Analytics Only</SelectItem>
+                        <SelectItem value="knowledge_base">Knowledge Base Only</SelectItem>
+                        <SelectItem value="teams">Teams Only</SelectItem>
+                        <SelectItem value="images">Generated Images Only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="export-format">Format</Label>
+                    <Select 
+                      value={exportFormat} 
+                      onValueChange={(v) => setExportFormat(v as typeof exportFormat)}
+                    >
+                      <SelectTrigger id="export-format">
+                        <SelectValue placeholder="Select format" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="json">JSON (Recommended)</SelectItem>
+                        <SelectItem value="csv">CSV (Spreadsheet)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                
+                <Button 
+                  variant="outline" 
+                  onClick={handleExportData}
+                  disabled={isExporting}
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Exporting...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export My Data
+                    </>
+                  )}
                 </Button>
               </div>
               

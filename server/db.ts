@@ -793,3 +793,49 @@ export async function updateSocialAccountTokens(accountId: number, tokens: {
   
   await db.update(socialAccounts).set(tokens).where(eq(socialAccounts.id, accountId));
 }
+
+
+// ============================================
+// SCHEDULED POSTING OPERATIONS
+// ============================================
+
+/**
+ * Gets all scheduled posts that are due for publishing
+ * @param dueBy - Posts scheduled before this date are considered due
+ */
+export async function getScheduledPostsDue(dueBy: Date) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const result = await db.select()
+    .from(posts)
+    .where(
+      and(
+        eq(posts.status, "scheduled"),
+        lte(posts.scheduledAt, dueBy)
+      )
+    )
+    .orderBy(posts.scheduledAt);
+  
+  return result;
+}
+
+/**
+ * Updates a social account with new token information
+ */
+export async function updateSocialAccount(accountId: number, data: {
+  accessToken?: string;
+  refreshToken?: string | null;
+  tokenExpiresAt?: Date | null;
+  isActive?: boolean;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.update(socialAccounts)
+    .set({
+      ...data,
+      updatedAt: new Date()
+    })
+    .where(eq(socialAccounts.id, accountId));
+}
