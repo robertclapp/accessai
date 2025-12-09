@@ -12,6 +12,13 @@ import { notifyOwner } from "./_core/notification";
 import { nanoid } from "nanoid";
 import * as db from "./db";
 import type { InsertPost } from "../drizzle/schema";
+import {
+  generateVerificationToken,
+  verifyEmailToken,
+  sendVerificationEmail,
+  canResendVerification,
+  getVerificationStatus,
+} from "./services/emailVerification";
 
 // ============================================
 // VALIDATION SCHEMAS
@@ -171,6 +178,75 @@ export const appRouter = router({
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return { success: true } as const;
+    }),
+    
+    /** Get email verification status for current user */
+    verificationStatus: protectedProcedure.query(async ({ ctx }) => {
+      return getVerificationStatus(ctx.user.id);
+    }),
+    
+    /** Send verification email to current user */
+    sendVerificationEmail: protectedProcedure
+      .input(z.object({
+        email: z.string().email(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Check rate limiting
+        const rateLimit = await canResendVerification(ctx.user.id);
+        if (!rateLimit.canResend) {
+          if (rateLimit.waitTimeSeconds) {
+            return {
+              success: false,
+              message: `Please wait ${rateLimit.waitTimeSeconds} seconds before requesting another email.`,
+            };
+          }
+          return {
+            success: false,
+            message: "You've reached the maximum verification attempts for today. Please try again tomorrow.",
+          };
+        }
+        
+        // Generate token
+        const tokenResult = await generateVerificationToken(ctx.user.id, input.email);
+        if (!tokenResult.success || !tokenResult.token) {
+          return { success: false, message: tokenResult.error || "Failed to generate token" };
+        }
+        
+        // Get base URL from request
+        const protocol = ctx.req.protocol || "https";
+        const host = ctx.req.get("host") || "localhost:3000";
+        const baseUrl = `${protocol}://${host}`;
+        
+        // Send email
+        const emailResult = await sendVerificationEmail(
+          input.email,
+          tokenResult.token,
+          ctx.user.name,
+          baseUrl
+        );
+        
+        // Notify owner of verification request
+        await notifyOwner({
+          title: "Verification Email Requested",
+          content: `User ${ctx.user.name || ctx.user.email} requested email verification for: ${input.email}`,
+        });
+        
+        return emailResult;
+      }),
+    
+    /** Verify email with token (public - accessed via email link) */
+    verifyEmail: publicProcedure
+      .input(z.object({
+        token: z.string().min(1),
+      }))
+      .mutation(async ({ input }) => {
+        const result = await verifyEmailToken(input.token);
+        return result;
+      }),
+    
+    /** Check if user can resend verification email */
+    canResendVerification: protectedProcedure.query(async ({ ctx }) => {
+      return canResendVerification(ctx.user.id);
     }),
   }),
 

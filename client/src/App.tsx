@@ -25,6 +25,7 @@ import Analytics from "./pages/Analytics";
 import TeamManagement from "./pages/TeamManagement";
 import Pricing from "./pages/Pricing";
 import Settings from "./pages/Settings";
+import VerifyEmail from "./pages/VerifyEmail";
 
 /** Protected Route wrapper */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -87,6 +88,7 @@ function Router() {
       <Route path="/analytics">{() => <ProtectedRoute component={Analytics} />}</Route>
       <Route path="/team">{() => <ProtectedRoute component={TeamManagement} />}</Route>
       <Route path="/settings">{() => <ProtectedRoute component={Settings} />}</Route>
+      <Route path="/verify-email" component={VerifyEmail} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

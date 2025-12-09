@@ -167,3 +167,18 @@
 - [x] Progress indicator during tour
 - [x] Keyboard navigation for tour
 - [x] Screen reader announcements for tour steps
+
+
+## Email Verification (New)
+- [x] Add emailVerified and verificationToken fields to users table
+- [x] Create verification tokens table for secure token storage
+- [x] Implement email sending service using built-in notification API
+- [x] Create verification email template with accessible design
+- [x] Add sendVerificationEmail API endpoint
+- [x] Add verifyEmail API endpoint
+- [x] Add resendVerificationEmail API endpoint (with rate limiting)
+- [x] Update auth flow to check verification status
+- [x] Create email verification pending UI component (EmailVerificationBanner)
+- [x] Add verification success page (VerifyEmail.tsx)
+- [x] Add verification status indicator in Dashboard
+- [x] Write tests for email verification flow (52 tests passing)

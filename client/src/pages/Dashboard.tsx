@@ -27,6 +27,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Link } from "wouter";
 import { format } from "date-fns";
+import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 
 interface QuickActionProps {
   title: string;
@@ -87,6 +88,9 @@ export default function Dashboard() {
   return (
     <div className="container py-8 max-w-7xl">
       <div className="flex flex-col gap-8">
+        {/* Email Verification Banner */}
+        <EmailVerificationBanner />
+        
         {/* Welcome Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>

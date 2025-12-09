@@ -46,6 +46,10 @@ export const users = mysqlTable("users", {
   hasCompletedTour: boolean("hasCompletedTour").default(false),
   tourCompletedAt: timestamp("tourCompletedAt"),
   
+  // Email verification
+  emailVerified: boolean("emailVerified").default(false),
+  emailVerifiedAt: timestamp("emailVerifiedAt"),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -358,3 +362,33 @@ export const notificationPreferences = mysqlTable("notification_preferences", {
 
 export type NotificationPreference = typeof notificationPreferences.$inferSelect;
 export type InsertNotificationPreference = typeof notificationPreferences.$inferInsert;
+
+
+/**
+ * Email verification tokens for secure email confirmation.
+ * Tokens expire after 24 hours and are single-use.
+ */
+export const verificationTokens = mysqlTable("verification_tokens", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  
+  // Secure random token (hashed for storage)
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  
+  // Token type for future extensibility (email, password reset, etc.)
+  type: mysqlEnum("type", ["email_verification", "password_reset", "email_change"]).default("email_verification").notNull(),
+  
+  // The email being verified (in case user changes email)
+  email: varchar("email", { length: 320 }).notNull(),
+  
+  // Token expiration (24 hours from creation)
+  expiresAt: timestamp("expiresAt").notNull(),
+  
+  // Whether token has been used
+  usedAt: timestamp("usedAt"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type VerificationToken = typeof verificationTokens.$inferSelect;
+export type InsertVerificationToken = typeof verificationTokens.$inferInsert;
