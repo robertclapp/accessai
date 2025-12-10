@@ -1,0 +1,4 @@
+ALTER TABLE `ab_tests` MODIFY COLUMN `platform` enum('linkedin','twitter','facebook','instagram','threads','bluesky','mastodon') NOT NULL;--> statement-breakpoint
+ALTER TABLE `industry_benchmarks` MODIFY COLUMN `platform` enum('linkedin','twitter','facebook','instagram','threads','bluesky','mastodon') NOT NULL;--> statement-breakpoint
+ALTER TABLE `platform_goals` MODIFY COLUMN `platform` enum('linkedin','twitter','facebook','instagram','threads','bluesky','mastodon') NOT NULL;--> statement-breakpoint
+ALTER TABLE `social_accounts` MODIFY COLUMN `platform` enum('linkedin','twitter','facebook','instagram','threads','bluesky','mastodon') NOT NULL;

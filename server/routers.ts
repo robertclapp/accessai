@@ -31,7 +31,7 @@ import {
 // VALIDATION SCHEMAS
 // ============================================
 
-const platformSchema = z.enum(["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "all"]);
+const platformSchema = z.enum(["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "mastodon", "all"]);
 const postStatusSchema = z.enum(["draft", "scheduled", "published", "failed"]);
 const knowledgeBaseTypeSchema = z.enum(["brand_guideline", "swipe_file", "ai_instruction", "testimonial", "faq", "other"]);
 const teamRoleSchema = z.enum(["owner", "admin", "editor", "viewer"]);
@@ -176,6 +176,11 @@ const platformLimits: Record<string, { chars: number; hashtags: number; tips: st
     chars: 300,
     hashtags: 5,
     tips: "Authentic, conversational, decentralized community focus, 300 char limit"
+  },
+  mastodon: {
+    chars: 500,
+    hashtags: 5,
+    tips: "Community-focused, federated network, 500 char limit, CW for sensitive topics"
   }
 };
 
@@ -2265,6 +2270,47 @@ ${aiContext}`
           endedAt: new Date()
         });
         return { success: true };
+      }),
+    
+    /** Schedule the winning variant for reposting */
+    scheduleWinner: protectedProcedure
+      .input(z.object({
+        testId: z.number(),
+        scheduledAt: z.string(), // ISO date string
+        platform: platformSchema.exclude(["all"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const test = await db.getABTestWithVariants(input.testId, ctx.user.id);
+        if (!test) {
+          throw new Error("Test not found");
+        }
+        if (test.test.status !== "completed") {
+          throw new Error("Test must be completed to schedule winner");
+        }
+        if (!test.test.winningVariantId) {
+          throw new Error("No winning variant determined");
+        }
+        
+        // Find the winning variant
+        const winningVariant = test.variants.find(v => v.id === test.test.winningVariantId);
+        if (!winningVariant) {
+          throw new Error("Winning variant not found");
+        }
+        
+        // Create a scheduled post from the winning variant
+        const scheduledAt = new Date(input.scheduledAt);
+        // hashtags is already a string[] from the JSON column type
+        const hashtags: string[] = winningVariant.hashtags || [];
+        const postId = await db.createPost({
+          userId: ctx.user.id,
+          content: winningVariant.content,
+          platform: input.platform,
+          status: "scheduled",
+          scheduledAt,
+          hashtags,
+        });
+        
+        return { success: true, postId, scheduledAt };
       }),
   }),
 });

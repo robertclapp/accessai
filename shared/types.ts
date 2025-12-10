@@ -13,7 +13,7 @@ export * from "./_core/errors";
  */
 
 // Platform types
-export type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "bluesky" | "all";
+export type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "bluesky" | "mastodon" | "all";
 
 // Post status types
 export type PostStatus = "draft" | "scheduled" | "published" | "failed";
@@ -119,6 +119,11 @@ export const PLATFORM_LIMITS: Record<string, PlatformInfo> = {
     chars: 300,
     hashtags: 5,
     tips: "Authentic, conversational, decentralized community focus, 300 char limit"
+  },
+  mastodon: {
+    chars: 500,
+    hashtags: 5,
+    tips: "Community-focused, federated network, 500 char limit, CW for sensitive topics"
   }
 };
 

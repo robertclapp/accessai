@@ -21,6 +21,7 @@ export const PLATFORM_CHAR_LIMITS = {
   instagram: 2200,
   threads: 500,
   bluesky: 300,
+  mastodon: 500,
   all: 280 // Use most restrictive for "all" platform
 } as const;
 
@@ -34,6 +35,7 @@ export const PLATFORM_HASHTAG_LIMITS = {
   instagram: 30,
   threads: 5,
   bluesky: 5,
+  mastodon: 5,
   all: 2
 } as const;
 
@@ -47,6 +49,7 @@ export const PLATFORM_DISPLAY_NAMES = {
   instagram: "Instagram",
   threads: "Threads",
   bluesky: "Bluesky",
+  mastodon: "Mastodon",
   all: "All Platforms"
 } as const;
 
@@ -60,6 +63,7 @@ export const PLATFORM_TIPS = {
   instagram: "Visual-first, storytelling captions, hashtags at end",
   threads: "Conversational, authentic voice, topic tags instead of hashtags, max 5 links",
   bluesky: "Authentic, conversational, decentralized community focus, 300 char limit",
+  mastodon: "Community-focused, federated network, 500 char limit, CW for sensitive topics",
   all: "Keep it concise to fit all platforms"
 } as const;
 

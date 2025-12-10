@@ -72,7 +72,7 @@ export const posts = mysqlTable("posts", {
   // Content
   title: varchar("title", { length: 255 }),
   content: text("content").notNull(),
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "all"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "mastodon", "all"]).notNull(),
   
   // Status and scheduling
   status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
@@ -136,7 +136,7 @@ export const templates = mysqlTable("templates", {
   }>(),
   
   // Platform compatibility
-  platforms: json("platforms").$type<("linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "bluesky")[]>(),
+  platforms: json("platforms").$type<("linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "bluesky" | "mastodon")[]>(),
   
   // Accessibility
   isAccessible: boolean("isAccessible").default(true),
@@ -256,7 +256,7 @@ export const socialAccounts = mysqlTable("social_accounts", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
   
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "mastodon"]).notNull(),
   accountId: varchar("accountId", { length: 255 }).notNull(),
   accountName: varchar("accountName", { length: 255 }),
   
@@ -552,7 +552,7 @@ export const platformGoals = mysqlTable("platform_goals", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
   /** Target platform */
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "mastodon"]).notNull(),
   /** Target engagement rate percentage (e.g., 5.0 = 5%) */
   targetEngagementRate: int("targetEngagementRate").notNull(),
   /** Target number of posts per period */
@@ -612,7 +612,7 @@ export const industryBenchmarks = mysqlTable("industry_benchmarks", {
   /** Industry category */
   industry: varchar("industry", { length: 100 }).notNull(),
   /** Platform for the benchmark */
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "mastodon"]).notNull(),
   /** Average engagement rate for this industry/platform */
   avgEngagementRate: int("avgEngagementRate").notNull(),
   /** Median engagement rate */
@@ -689,7 +689,7 @@ export const abTests = mysqlTable("ab_tests", {
   /** Test description */
   description: text("description"),
   /** Target platform for the test */
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "mastodon"]).notNull(),
   
   /** Test status */
   status: mysqlEnum("status", ["draft", "active", "completed", "cancelled"]).default("draft").notNull(),

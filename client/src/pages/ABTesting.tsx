@@ -6,6 +6,7 @@
  */
 
 import { useState } from "react";
+import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,9 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
-  Eye
+  Eye,
+  Calendar,
+  Send
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -56,7 +59,11 @@ interface Variant {
 
 export default function ABTesting() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [selectedTestId, setSelectedTestId] = useState<number | null>(null);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("09:00");
+  const [schedulePlatform, setSchedulePlatform] = useState<Platform>("linkedin");
   const [newTest, setNewTest] = useState({
     name: "",
     description: "",
@@ -132,6 +139,18 @@ export default function ABTesting() {
       toast.success("A/B test cancelled");
       utils.abTesting.list.invalidate();
       utils.abTesting.get.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const scheduleWinner = trpc.abTesting.scheduleWinner.useMutation({
+    onSuccess: () => {
+      toast.success("Winning variant scheduled for reposting!");
+      setIsScheduleOpen(false);
+      setScheduleDate("");
+      setScheduleTime("09:00");
     },
     onError: (error) => {
       toast.error(error.message);
@@ -551,6 +570,35 @@ export default function ABTesting() {
                       </CardContent>
                     </Card>
                   )}
+                  
+                  {/* Schedule Winner Button */}
+                  {selectedTest.test.status === "completed" && selectedTest.test.winningVariantId && (
+                    <Card className="bg-green-500/10 border-green-500">
+                      <CardContent className="py-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="font-medium flex items-center gap-2">
+                              <Trophy className="w-4 h-4 text-green-500" />
+                              Winner Determined
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              Schedule the winning variant for reposting to maximize engagement
+                            </p>
+                          </div>
+                          <Button
+                            onClick={() => {
+                              setSchedulePlatform(selectedTest.test.platform as Platform);
+                              setIsScheduleOpen(true);
+                            }}
+                            className="bg-green-500 hover:bg-green-600"
+                          >
+                            <Calendar className="w-4 h-4 mr-2" />
+                            Schedule Winner
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
                 </CardContent>
               </>
             ) : (
@@ -564,6 +612,103 @@ export default function ABTesting() {
           </Card>
         </div>
       </div>
+      
+      {/* Schedule Winner Dialog */}
+      <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="w-5 h-5" />
+              Schedule Winning Variant
+            </DialogTitle>
+            <DialogDescription>
+              Schedule the winning content for reposting on your selected platform.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="schedule-date">Date</Label>
+              <Input
+                id="schedule-date"
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                min={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="schedule-time">Time</Label>
+              <Input
+                id="schedule-time"
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="schedule-platform">Platform</Label>
+              <Select
+                value={schedulePlatform}
+                onValueChange={(v) => setSchedulePlatform(v as Platform)}
+              >
+                <SelectTrigger id="schedule-platform">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(platformConfig) as Platform[]).map((p) => (
+                    <SelectItem key={p} value={p}>
+                      <span className="flex items-center gap-2">
+                        <span className={`w-5 h-5 rounded flex items-center justify-center text-white text-xs ${platformConfig[p].color}`}>
+                          {platformConfig[p].icon}
+                        </span>
+                        {PLATFORM_DISPLAY_NAMES[p]}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {selectedTest?.test.winningVariantId && (
+              <div className="bg-muted p-3 rounded-lg">
+                <p className="text-sm font-medium mb-1">Content Preview:</p>
+                <p className="text-sm text-muted-foreground line-clamp-3">
+                  {selectedTest.variants.find(v => v.id === selectedTest.test.winningVariantId)?.content}
+                </p>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsScheduleOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!scheduleDate || !selectedTestId) return;
+                const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}:00`);
+                scheduleWinner.mutate({
+                  testId: selectedTestId,
+                  scheduledAt: scheduledAt.toISOString(),
+                  platform: schedulePlatform,
+                });
+              }}
+              disabled={!scheduleDate || scheduleWinner.isPending}
+              className="bg-green-500 hover:bg-green-600"
+            >
+              {scheduleWinner.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4 mr-2" />
+              )}
+              Schedule Post
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

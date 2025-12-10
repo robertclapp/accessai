@@ -1,0 +1,1 @@
+ALTER TABLE `posts` MODIFY COLUMN `platform` enum('linkedin','twitter','facebook','instagram','threads','bluesky','mastodon','all') NOT NULL;

@@ -11,6 +11,7 @@
  */
 
 import { useState } from "react";
+import * as React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,7 +37,10 @@ import {
   AlertTriangle,
   ExternalLink,
   Trash2,
-  Download
+  Download,
+  Mail,
+  Send,
+  Eye
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -65,6 +69,376 @@ interface WritingStyleProfile {
   formality?: Formality;
   industry?: string;
   targetAudience?: string;
+}
+
+/** Email Digests Tab Component */
+function EmailDigestsTab() {
+  const [digestEnabled, setDigestEnabled] = useState(false);
+  const [frequency, setFrequency] = useState<"weekly" | "monthly">("weekly");
+  const [dayOfWeek, setDayOfWeek] = useState(1); // Monday
+  const [dayOfMonth, setDayOfMonth] = useState(1);
+  const [hourUtc, setHourUtc] = useState(9); // 9 AM
+  const [includeAnalytics, setIncludeAnalytics] = useState(true);
+  const [includeGoalProgress, setIncludeGoalProgress] = useState(true);
+  const [includeTopPosts, setIncludeTopPosts] = useState(true);
+  const [includePlatformComparison, setIncludePlatformComparison] = useState(true);
+  const [includeScheduledPosts, setIncludeScheduledPosts] = useState(true);
+  const [lastDigestSent, setLastDigestSent] = useState<Date | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  
+  // Fetch current preferences
+  const { data: preferences, isLoading } = trpc.settings.getDigestPreferences.useQuery();
+  
+  // Update preferences mutation
+  const updatePreferences = trpc.settings.updateDigestPreferences.useMutation({
+    onSuccess: () => {
+      toast.success("Digest preferences saved!");
+      setIsSaving(false);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to save preferences");
+      setIsSaving(false);
+    }
+  });
+  
+  // Preview digest query (using refetch pattern since it's a query)
+  const previewDigestQuery = trpc.settings.previewDigest.useQuery(
+    { period: frequency },
+    { enabled: false }
+  );
+  
+  // Send test digest mutation
+  const sendTestDigest = trpc.settings.sendTestDigest.useMutation({
+    onSuccess: () => {
+      toast.success("Test digest sent to your email!");
+      setIsSendingTest(false);
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to send test digest");
+      setIsSendingTest(false);
+    }
+  });
+  
+  // Load preferences when data is available
+  React.useEffect(() => {
+    if (preferences) {
+      setDigestEnabled(preferences.enabled ?? false);
+      setFrequency(preferences.frequency ?? "weekly");
+      setDayOfWeek(preferences.dayOfWeek ?? 1);
+      setDayOfMonth(preferences.dayOfMonth ?? 1);
+      setHourUtc(preferences.hourUtc ?? 9);
+      setIncludeAnalytics(preferences.includeAnalytics ?? true);
+      setIncludeGoalProgress(preferences.includeGoalProgress ?? true);
+      setIncludeTopPosts(preferences.includeTopPosts ?? true);
+      setIncludePlatformComparison(preferences.includePlatformComparison ?? true);
+      setIncludeScheduledPosts(preferences.includeScheduledPosts ?? true);
+    }
+  }, [preferences]);
+  
+  const handleSave = () => {
+    setIsSaving(true);
+    updatePreferences.mutate({
+      enabled: digestEnabled,
+      frequency,
+      dayOfWeek,
+      dayOfMonth,
+      hourUtc,
+      includeAnalytics,
+      includeGoalProgress,
+      includeTopPosts,
+      includePlatformComparison,
+      includeScheduledPosts
+    });
+  };
+  
+  const handlePreview = async () => {
+    setIsPreviewing(true);
+    try {
+      const result = await previewDigestQuery.refetch();
+      if (result.data?.preview) {
+        const previewWindow = window.open("", "_blank");
+        if (previewWindow) {
+          previewWindow.document.write(result.data.preview);
+          previewWindow.document.close();
+        }
+      } else {
+        toast.error("No preview available");
+      }
+    } catch (error) {
+      toast.error("Failed to generate preview");
+    }
+    setIsPreviewing(false);
+  };
+  
+  const handleSendTest = () => {
+    setIsSendingTest(true);
+    sendTestDigest.mutate({ period: frequency });
+  };
+  
+  const daysOfWeek = [
+    { value: 0, label: "Sunday" },
+    { value: 1, label: "Monday" },
+    { value: 2, label: "Tuesday" },
+    { value: 3, label: "Wednesday" },
+    { value: 4, label: "Thursday" },
+    { value: 5, label: "Friday" },
+    { value: 6, label: "Saturday" }
+  ];
+  
+  const hours = Array.from({ length: 24 }, (_, i) => ({
+    value: i,
+    label: `${i.toString().padStart(2, "0")}:00 UTC`
+  }));
+  
+  if (isLoading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Mail className="h-5 w-5" />
+          Email Digest Reports
+        </CardTitle>
+        <CardDescription>
+          Receive automated analytics summaries and performance reports via email
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Enable/Disable Toggle */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label htmlFor="digest-enabled" className="text-base font-medium">Enable Email Digests</Label>
+            <p className="text-sm text-muted-foreground">
+              Receive regular reports about your social media performance
+            </p>
+          </div>
+          <Switch
+            id="digest-enabled"
+            checked={digestEnabled}
+            onCheckedChange={setDigestEnabled}
+          />
+        </div>
+        
+        {digestEnabled && (
+          <>
+            <Separator />
+            
+            {/* Frequency Settings */}
+            <div className="space-y-4">
+              <h3 className="font-medium">Delivery Schedule</h3>
+              
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="frequency">Frequency</Label>
+                  <Select value={frequency} onValueChange={(v) => setFrequency(v as "weekly" | "monthly")}>
+                    <SelectTrigger id="frequency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="weekly">Weekly</SelectItem>
+                      <SelectItem value="monthly">Monthly</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {frequency === "weekly" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="day-of-week">Day of Week</Label>
+                    <Select value={dayOfWeek.toString()} onValueChange={(v) => setDayOfWeek(parseInt(v))}>
+                      <SelectTrigger id="day-of-week">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {daysOfWeek.map((day) => (
+                          <SelectItem key={day.value} value={day.value.toString()}>
+                            {day.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="day-of-month">Day of Month</Label>
+                    <Select value={dayOfMonth.toString()} onValueChange={(v) => setDayOfMonth(parseInt(v))}>
+                      <SelectTrigger id="day-of-month">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                          <SelectItem key={day} value={day.toString()}>
+                            {day}{day === 1 ? "st" : day === 2 ? "nd" : day === 3 ? "rd" : "th"}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
+                <div className="space-y-2">
+                  <Label htmlFor="hour">Delivery Time</Label>
+                  <Select value={hourUtc.toString()} onValueChange={(v) => setHourUtc(parseInt(v))}>
+                    <SelectTrigger id="hour">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {hours.map((hour) => (
+                        <SelectItem key={hour.value} value={hour.value.toString()}>
+                          {hour.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            
+            <Separator />
+            
+            {/* Content Sections */}
+            <div className="space-y-4">
+              <h3 className="font-medium">Report Sections</h3>
+              <p className="text-sm text-muted-foreground">
+                Choose which sections to include in your digest
+              </p>
+              
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="include-analytics">Analytics Summary</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Overall performance metrics and trends
+                    </p>
+                  </div>
+                  <Switch
+                    id="include-analytics"
+                    checked={includeAnalytics}
+                    onCheckedChange={setIncludeAnalytics}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="include-goals">Goal Progress</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Progress toward your platform goals
+                    </p>
+                  </div>
+                  <Switch
+                    id="include-goals"
+                    checked={includeGoalProgress}
+                    onCheckedChange={setIncludeGoalProgress}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="include-top-posts">Top Performing Posts</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Your best performing content this period
+                    </p>
+                  </div>
+                  <Switch
+                    id="include-top-posts"
+                    checked={includeTopPosts}
+                    onCheckedChange={setIncludeTopPosts}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="include-comparison">Platform Comparison</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Side-by-side performance across platforms
+                    </p>
+                  </div>
+                  <Switch
+                    id="include-comparison"
+                    checked={includePlatformComparison}
+                    onCheckedChange={setIncludePlatformComparison}
+                  />
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="include-scheduled">Upcoming Scheduled Posts</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Preview of posts scheduled for the next period
+                    </p>
+                  </div>
+                  <Switch
+                    id="include-scheduled"
+                    checked={includeScheduledPosts}
+                    onCheckedChange={setIncludeScheduledPosts}
+                  />
+                </div>
+              </div>
+            </div>
+            
+            <Separator />
+            
+            {/* Last Sent Info */}
+            {lastDigestSent && (
+              <div className="bg-muted/50 rounded-lg p-4">
+                <p className="text-sm text-muted-foreground">
+                  Last digest sent: {lastDigestSent.toLocaleDateString()} at {lastDigestSent.toLocaleTimeString()}
+                </p>
+              </div>
+            )}
+            
+            {/* Actions */}
+            <div className="flex flex-wrap gap-3">
+              <Button onClick={handleSave} disabled={isSaving}>
+                {isSaving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save Preferences
+              </Button>
+              
+              <Button variant="outline" onClick={handlePreview} disabled={isPreviewing}>
+                {isPreviewing ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Eye className="h-4 w-4 mr-2" />
+                )}
+                Preview Digest
+              </Button>
+              
+              <Button variant="outline" onClick={handleSendTest} disabled={isSendingTest}>
+                {isSendingTest ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4 mr-2" />
+                )}
+                Send Test Digest
+              </Button>
+            </div>
+          </>
+        )}
+        
+        {!digestEnabled && (
+          <div className="bg-muted/50 rounded-lg p-6 text-center">
+            <Mail className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">
+              Enable email digests to receive automated performance reports
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 /** Restart Tour Button Component */
@@ -275,7 +649,7 @@ export default function Settings() {
       </div>
       
       <Tabs defaultValue="profile" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 h-auto gap-2" role="tablist">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-7 h-auto gap-2" role="tablist">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             <span className="hidden sm:inline">Profile</span>
@@ -299,6 +673,10 @@ export default function Settings() {
           <TabsTrigger value="privacy" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
             <span className="hidden sm:inline">Privacy</span>
+          </TabsTrigger>
+          <TabsTrigger value="digests" className="flex items-center gap-2">
+            <Mail className="h-4 w-4" />
+            <span className="hidden sm:inline">Digests</span>
           </TabsTrigger>
         </TabsList>
         
@@ -747,7 +1125,8 @@ export default function Settings() {
                   { id: "facebook", name: "Facebook", color: "bg-blue-500", connected: false },
                   { id: "instagram", name: "Instagram", color: "bg-gradient-to-r from-purple-500 to-pink-500", connected: false },
                   { id: "threads", name: "Threads", color: "bg-black", connected: false },
-                  { id: "bluesky", name: "Bluesky", color: "bg-sky-500", connected: false }
+                  { id: "bluesky", name: "Bluesky", color: "bg-sky-500", connected: false },
+                  { id: "mastodon", name: "Mastodon", color: "bg-purple-600", connected: false }
                 ].map((platform) => {
                   const connectedAccount = socialAccounts?.find(
                     (acc: { platform: string }) => acc.platform === platform.id
@@ -1011,6 +1390,11 @@ export default function Settings() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        {/* Email Digests Tab */}
+        <TabsContent value="digests" className="space-y-6">
+          <EmailDigestsTab />
         </TabsContent>
       </Tabs>
       

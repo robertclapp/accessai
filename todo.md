@@ -360,3 +360,36 @@
 - [x] Add A/B test history view
 - [x] Add A/B Testing to sidebar navigation
 - [x] Write tests for A/B testing functionality (174 tests passing)
+
+
+## Email Digest Settings UI (New)
+- [x] Add "Email Digests" tab to Settings page
+- [x] Create digest enable/disable toggle
+- [x] Add frequency selector (weekly/monthly)
+- [x] Add day of week/month selector
+- [x] Add delivery time (hour) selector
+- [x] Add content section toggles (analytics, goals, top posts, platform comparison, scheduled posts)
+- [x] Add preview digest button
+- [x] Add send test digest button
+- [x] Show last digest sent date
+- [x] Save preferences on change (197 tests passing)
+
+## A/B Test Winner Scheduling (New)
+- [x] Add "Schedule Winner" button to completed A/B tests
+- [x] Create scheduling dialog for winner variant
+- [x] Allow date/time selection for repost
+- [x] Allow platform selection for repost
+- [x] Create scheduled post from winning variant content
+- [x] Show scheduled repost status on test details
+- [x] Add API endpoint for scheduling winner (197 tests passing)
+
+## Mastodon Integration (New)
+- [x] Research Mastodon API and OAuth flow
+- [x] Create Mastodon API adapter with OAuth
+- [x] Add Mastodon to platform enum in database schema
+- [x] Implement Mastodon OAuth callback handler
+- [x] Add Mastodon-specific content formatting (500 char limit)
+- [x] Update post builder UI to include Mastodon option
+- [x] Update settings page for Mastodon account connection
+- [x] Add Mastodon to all platform constants
+- [x] Write tests for Mastodon integration (197 tests passing)
