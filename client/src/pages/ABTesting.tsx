@@ -36,7 +36,11 @@ import {
   Send,
   Lightbulb,
   Sparkles,
-  TrendingUp
+  TrendingUp,
+  History,
+  Target,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -64,6 +68,7 @@ interface Variant {
 export default function ABTesting() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [isHistoryInsightsOpen, setIsHistoryInsightsOpen] = useState(false);
   const [selectedTestId, setSelectedTestId] = useState<number | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
@@ -299,13 +304,21 @@ export default function ABTesting() {
               Create content experiments to find what works best on each platform
             </p>
           </div>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                New Test
-              </Button>
-            </DialogTrigger>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsHistoryInsightsOpen(true)}
+            >
+              <History className="w-4 h-4 mr-2" />
+              History Insights
+            </Button>
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Test
+                </Button>
+              </DialogTrigger>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Create A/B Test</DialogTitle>
@@ -1027,6 +1040,13 @@ export default function ABTesting() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      
+      {/* History Insights Dialog */}
+      <HistoryInsightsDialog 
+        open={isHistoryInsightsOpen} 
+        onOpenChange={setIsHistoryInsightsOpen} 
+      />
+      </div>
     </DashboardLayout>
   );
 }
@@ -1218,5 +1238,270 @@ function ABTestInsightsSection({ testId }: { testId: number }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+
+// ============================================
+// HISTORY INSIGHTS DIALOG COMPONENT
+// ============================================
+
+function HistoryInsightsDialog({ 
+  open, 
+  onOpenChange 
+}: { 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { data: insights, isLoading, refetch } = trpc.abTesting.getHistoryInsights.useQuery(
+    undefined,
+    { enabled: open }
+  );
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="w-5 h-5" />
+            A/B Test History Insights
+          </DialogTitle>
+          <DialogDescription>
+            Aggregated learnings from all your completed A/B tests
+          </DialogDescription>
+        </DialogHeader>
+        
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : !insights ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <FlaskConical className="w-12 h-12 mx-auto mb-4 opacity-50" />
+            <p>No insights available yet.</p>
+            <p className="text-sm">Complete some A/B tests to see aggregated learnings.</p>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Summary Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-muted/50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold">{insights.summary.completedTests}</div>
+                <div className="text-xs text-muted-foreground">Completed Tests</div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold">{insights.summary.avgConfidenceLevel.toFixed(0)}%</div>
+                <div className="text-xs text-muted-foreground">Avg Confidence</div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold text-green-600">
+                  +{insights.summary.avgEngagementLift.toFixed(1)}%
+                </div>
+                <div className="text-xs text-muted-foreground">Avg Engagement Lift</div>
+              </div>
+              <div className="bg-muted/50 rounded-lg p-4 text-center">
+                <div className="text-2xl font-bold">
+                  {insights.summary.bestPerformingPlatform 
+                    ? PLATFORM_DISPLAY_NAMES[insights.summary.bestPerformingPlatform as keyof typeof PLATFORM_DISPLAY_NAMES] 
+                    : "N/A"}
+                </div>
+                <div className="text-xs text-muted-foreground">Best Platform</div>
+              </div>
+            </div>
+            
+            {/* Content Learnings */}
+            {(insights.contentLearnings.winningElements.length > 0 || 
+              insights.contentLearnings.losingElements.length > 0) && (
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Lightbulb className="w-5 h-5 text-yellow-500" />
+                  Content Learnings
+                </h3>
+                
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Winning Elements */}
+                  {insights.contentLearnings.winningElements.length > 0 && (
+                    <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                      <h4 className="font-medium text-green-600 mb-3 flex items-center gap-2">
+                        <ArrowUp className="w-4 h-4" />
+                        Winning Elements
+                      </h4>
+                      <div className="space-y-2">
+                        {insights.contentLearnings.winningElements.slice(0, 5).map((element, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-sm">
+                            <span>{element.element}</span>
+                            <Badge variant="outline" className="text-green-600 border-green-500">
+                              {element.frequency}x • {element.impact}
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Losing Elements */}
+                  {insights.contentLearnings.losingElements.length > 0 && (
+                    <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+                      <h4 className="font-medium text-red-600 mb-3 flex items-center gap-2">
+                        <ArrowDown className="w-4 h-4" />
+                        Elements to Avoid
+                      </h4>
+                      <div className="space-y-2">
+                        {insights.contentLearnings.losingElements.slice(0, 5).map((element, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-sm">
+                            <span>{element.element}</span>
+                            <Badge variant="outline" className="text-red-600 border-red-500">
+                              {element.frequency}x
+                            </Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Platform Breakdown */}
+            {insights.platformBreakdown.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5" />
+                  Platform Performance
+                </h3>
+                
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {insights.platformBreakdown.map((platform) => (
+                    <div 
+                      key={platform.platform}
+                      className={`rounded-lg p-4 border ${
+                        platform.platform === insights.summary.bestPerformingPlatform
+                          ? "bg-primary/10 border-primary"
+                          : "bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">
+                          {PLATFORM_DISPLAY_NAMES[platform.platform as keyof typeof PLATFORM_DISPLAY_NAMES]}
+                        </span>
+                        {platform.platform === insights.summary.bestPerformingPlatform && (
+                          <Trophy className="w-4 h-4 text-yellow-500" />
+                        )}
+                      </div>
+                      <div className="text-sm text-muted-foreground space-y-1">
+                        <div>{platform.testsCompleted} tests completed</div>
+                        <div className="text-green-600">+{platform.avgEngagementLift.toFixed(1)}% avg lift</div>
+                        <div>{platform.avgConfidence.toFixed(0)}% avg confidence</div>
+                      </div>
+                      {platform.winningPatterns.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {platform.winningPatterns.slice(0, 3).map((pattern, idx) => (
+                            <Badge key={idx} variant="secondary" className="text-xs">
+                              {pattern}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Historical Insights */}
+            {insights.historicalInsights.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" />
+                  Key Insights
+                </h3>
+                
+                <div className="space-y-3">
+                  {insights.historicalInsights.map((insight, idx) => (
+                    <div 
+                      key={idx}
+                      className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg"
+                    >
+                      <div className={`w-2 h-2 rounded-full mt-2 ${
+                        insight.confidence === "high" ? "bg-green-500" :
+                        insight.confidence === "medium" ? "bg-yellow-500" : "bg-gray-400"
+                      }`} />
+                      <div className="flex-1">
+                        <div className="font-medium">{insight.title}</div>
+                        <div className="text-sm text-muted-foreground">{insight.description}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Based on {insight.dataPoints} data points • {insight.confidence} confidence
+                          {insight.trend && (
+                            <span className={`ml-2 ${
+                              insight.trend === "improving" ? "text-green-500" :
+                              insight.trend === "declining" ? "text-red-500" : ""
+                            }`}>
+                              {insight.trend === "improving" ? "↑ Improving" :
+                               insight.trend === "declining" ? "↓ Declining" : "→ Stable"}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Recommendations */}
+            {insights.recommendations.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <Target className="w-5 h-5" />
+                  Recommendations
+                </h3>
+                
+                <div className="space-y-3">
+                  {insights.recommendations.map((rec, idx) => (
+                    <div 
+                      key={idx}
+                      className={`p-4 rounded-lg border-l-4 ${
+                        rec.priority === "high" ? "bg-red-500/10 border-red-500" :
+                        rec.priority === "medium" ? "bg-yellow-500/10 border-yellow-500" :
+                        "bg-blue-500/10 border-blue-500"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className={`text-xs ${
+                          rec.priority === "high" ? "border-red-500 text-red-500" :
+                          rec.priority === "medium" ? "border-yellow-500 text-yellow-500" :
+                          "border-blue-500 text-blue-500"
+                        }`}>
+                          {rec.priority} priority
+                        </Badge>
+                      </div>
+                      <div className="font-medium">{rec.title}</div>
+                      <div className="text-sm text-muted-foreground">{rec.description}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Based on: {rec.basedOn}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="text-xs text-muted-foreground text-center">
+              Generated at {new Date(insights.generatedAt).toLocaleString()}
+            </div>
+          </div>
+        )}
+        
+        <DialogFooter>
+          <Button variant="outline" onClick={() => refetch()}>
+            <Sparkles className="w-4 h-4 mr-2" />
+            Refresh Insights
+          </Button>
+          <Button onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

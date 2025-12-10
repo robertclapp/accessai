@@ -521,3 +521,429 @@ export async function generateCrossTestInsights(
     ],
   };
 }
+
+
+// ============================================
+// A/B TEST HISTORY INSIGHTS
+// ============================================
+
+export interface HistoricalInsight {
+  category: "content" | "timing" | "platform" | "engagement" | "strategy";
+  title: string;
+  description: string;
+  confidence: "high" | "medium" | "low";
+  dataPoints: number;
+  trend?: "improving" | "stable" | "declining";
+}
+
+export interface PlatformPerformance {
+  platform: string;
+  testsCompleted: number;
+  avgConfidence: number;
+  avgEngagementLift: number;
+  winningPatterns: string[];
+}
+
+export interface TestHistoryInsights {
+  userId: number;
+  generatedAt: Date;
+  summary: {
+    totalTests: number;
+    completedTests: number;
+    avgConfidenceLevel: number;
+    avgEngagementLift: number;
+    mostTestedPlatform: string | null;
+    bestPerformingPlatform: string | null;
+  };
+  platformBreakdown: PlatformPerformance[];
+  historicalInsights: HistoricalInsight[];
+  contentLearnings: {
+    winningElements: { element: string; frequency: number; impact: string }[];
+    losingElements: { element: string; frequency: number; impact: string }[];
+  };
+  recommendations: {
+    priority: "high" | "medium" | "low";
+    title: string;
+    description: string;
+    basedOn: string;
+  }[];
+  timeAnalysis: {
+    bestDayOfWeek: string | null;
+    bestTimeOfDay: string | null;
+    testFrequency: number; // tests per month
+  };
+}
+
+/**
+ * Analyze content patterns across all completed tests
+ */
+function analyzeHistoricalPatterns(
+  testsWithVariants: Array<{
+    test: { id: number; name: string; platform: string; confidenceLevel: number | null; createdAt: Date };
+    winnerContent: string;
+    loserContent: string;
+    engagementLift: number;
+  }>
+): {
+  winningElements: { element: string; frequency: number; impact: string }[];
+  losingElements: { element: string; frequency: number; impact: string }[];
+} {
+  const winningElements = new Map<string, { count: number; totalLift: number }>();
+  const losingElements = new Map<string, { count: number; totalLift: number }>();
+  
+  for (const { winnerContent, loserContent, engagementLift } of testsWithVariants) {
+    // Analyze winner content
+    const winnerFeatures = extractContentFeatures(winnerContent);
+    const loserFeatures = extractContentFeatures(loserContent);
+    
+    // Features unique to winner
+    for (const feature of winnerFeatures) {
+      if (!loserFeatures.includes(feature)) {
+        const existing = winningElements.get(feature) || { count: 0, totalLift: 0 };
+        existing.count++;
+        existing.totalLift += engagementLift;
+        winningElements.set(feature, existing);
+      }
+    }
+    
+    // Features unique to loser
+    for (const feature of loserFeatures) {
+      if (!winnerFeatures.includes(feature)) {
+        const existing = losingElements.get(feature) || { count: 0, totalLift: 0 };
+        existing.count++;
+        existing.totalLift += engagementLift;
+        losingElements.set(feature, existing);
+      }
+    }
+  }
+  
+  // Convert to sorted arrays
+  const sortedWinning = Array.from(winningElements.entries())
+    .map(([element, data]) => ({
+      element,
+      frequency: data.count,
+      impact: data.count > 0 ? `+${(data.totalLift / data.count).toFixed(1)}% avg lift` : "N/A",
+    }))
+    .sort((a, b) => b.frequency - a.frequency)
+    .slice(0, 10);
+  
+  const sortedLosing = Array.from(losingElements.entries())
+    .map(([element, data]) => ({
+      element,
+      frequency: data.count,
+      impact: data.count > 0 ? `-${(data.totalLift / data.count).toFixed(1)}% avg lift` : "N/A",
+    }))
+    .sort((a, b) => b.frequency - a.frequency)
+    .slice(0, 10);
+  
+  return {
+    winningElements: sortedWinning,
+    losingElements: sortedLosing,
+  };
+}
+
+/**
+ * Extract content features for pattern analysis
+ */
+export function extractContentFeatures(content: string): string[] {
+  const features: string[] = [];
+  
+  // Check for emojis
+  const emojiCount = (content.match(/[\uD83C-\uDBFF\uDC00-\uDFFF]+/g) || []).length;
+  if (emojiCount > 0) features.push(`Emojis (${emojiCount})`);
+  
+  // Check for hashtags
+  const hashtagCount = (content.match(/#\w+/g) || []).length;
+  if (hashtagCount > 0) features.push(`Hashtags (${hashtagCount})`);
+  
+  // Check for questions
+  if (content.includes("?")) features.push("Questions");
+  
+  // Check for calls to action
+  if (/\b(click|learn|read|check|discover|try|get|join|sign|subscribe|follow|share|comment|like)\b/i.test(content)) {
+    features.push("Call to Action");
+  }
+  
+  // Check for links
+  if (/https?:\/\/\S+/i.test(content)) features.push("Links");
+  
+  // Check for mentions
+  if (/@\w+/.test(content)) features.push("Mentions");
+  
+  // Check content length category
+  if (content.length < 100) features.push("Short (< 100 chars)");
+  else if (content.length < 280) features.push("Medium (100-280 chars)");
+  else features.push("Long (> 280 chars)");
+  
+  // Check for line breaks (formatting)
+  if ((content.match(/\n/g) || []).length > 2) features.push("Multi-paragraph");
+  
+  // Check for bullet points or lists
+  if (/^[\-•*]\s/m.test(content)) features.push("Bullet Points");
+  
+  // Check for numbers/statistics
+  if (/\d+%|\d+\s*(million|billion|thousand|k|m|b)/i.test(content)) features.push("Statistics");
+  
+  return features;
+}
+
+/**
+ * Generate comprehensive historical insights for a user's A/B tests
+ */
+export async function generateTestHistoryInsights(
+  userId: number
+): Promise<TestHistoryInsights> {
+  const tests = await db.getUserABTests(userId);
+  
+  const completedTests = tests.filter(t => t.status === "completed" && t.winningVariantId);
+  
+  // Initialize empty insights structure
+  const insights: TestHistoryInsights = {
+    userId,
+    generatedAt: new Date(),
+    summary: {
+      totalTests: tests.length,
+      completedTests: completedTests.length,
+      avgConfidenceLevel: 0,
+      avgEngagementLift: 0,
+      mostTestedPlatform: null,
+      bestPerformingPlatform: null,
+    },
+    platformBreakdown: [],
+    historicalInsights: [],
+    contentLearnings: {
+      winningElements: [],
+      losingElements: [],
+    },
+    recommendations: [],
+    timeAnalysis: {
+      bestDayOfWeek: null,
+      bestTimeOfDay: null,
+      testFrequency: 0,
+    },
+  };
+  
+  if (completedTests.length === 0) {
+    insights.recommendations.push({
+      priority: "high",
+      title: "Start A/B Testing",
+      description: "Run your first A/B test to begin gathering insights about what content resonates with your audience.",
+      basedOn: "No completed tests",
+    });
+    return insights;
+  }
+  
+  // Calculate summary statistics
+  const totalConfidence = completedTests.reduce((sum, t) => sum + (t.confidenceLevel || 0), 0);
+  insights.summary.avgConfidenceLevel = totalConfidence / completedTests.length;
+  
+  // Group by platform
+  const platformGroups = new Map<string, typeof completedTests>();
+  for (const test of completedTests) {
+    const existing = platformGroups.get(test.platform) || [];
+    existing.push(test);
+    platformGroups.set(test.platform, existing);
+  }
+  
+  // Find most tested platform
+  let maxTests = 0;
+  for (const [platform, platformTests] of Array.from(platformGroups.entries())) {
+    if (platformTests.length > maxTests) {
+      maxTests = platformTests.length;
+      insights.summary.mostTestedPlatform = platform;
+    }
+  }
+  
+  // Analyze each platform
+  const testsWithVariants: Array<{
+    test: { id: number; name: string; platform: string; confidenceLevel: number | null; createdAt: Date };
+    winnerContent: string;
+    loserContent: string;
+    engagementLift: number;
+  }> = [];
+  
+  let bestPlatformLift = 0;
+  
+  for (const [platform, platformTests] of Array.from(platformGroups.entries())) {
+    const platformInsights: PlatformPerformance = {
+      platform,
+      testsCompleted: platformTests.length,
+      avgConfidence: platformTests.reduce((sum: number, t: { confidenceLevel: number | null }) => sum + (t.confidenceLevel || 0), 0) / platformTests.length,
+      avgEngagementLift: 0,
+      winningPatterns: [],
+    };
+    
+    let totalLift = 0;
+    const patterns = new Map<string, number>();
+    
+    for (const test of platformTests) {
+      const testData = await db.getABTestWithVariants(test.id, userId);
+      if (!testData) continue;
+      
+      const winner = testData.variants.find(v => v.id === test.winningVariantId);
+      const loser = testData.variants.find(v => v.id !== test.winningVariantId);
+      
+      if (winner && loser) {
+        const winnerRate = winner.engagementRate || 0;
+        const loserRate = loser.engagementRate || 0;
+        const lift = loserRate > 0 ? ((winnerRate - loserRate) / loserRate) * 100 : 0;
+        
+        totalLift += lift;
+        
+        testsWithVariants.push({
+          test: {
+            id: test.id,
+            name: test.name,
+            platform: test.platform,
+            confidenceLevel: test.confidenceLevel,
+            createdAt: test.createdAt,
+          },
+          winnerContent: winner.content,
+          loserContent: loser.content,
+          engagementLift: lift,
+        });
+        
+        // Extract patterns from winner
+        const features = extractContentFeatures(winner.content);
+        for (const feature of features) {
+          patterns.set(feature, (patterns.get(feature) || 0) + 1);
+        }
+      }
+    }
+    
+    platformInsights.avgEngagementLift = platformTests.length > 0 ? totalLift / platformTests.length : 0;
+    
+    // Get top patterns for this platform
+    platformInsights.winningPatterns = Array.from(patterns.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([pattern]) => pattern);
+    
+    insights.platformBreakdown.push(platformInsights);
+    
+    // Track best performing platform
+    if (platformInsights.avgEngagementLift > bestPlatformLift) {
+      bestPlatformLift = platformInsights.avgEngagementLift;
+      insights.summary.bestPerformingPlatform = platform;
+    }
+  }
+  
+  // Calculate overall average engagement lift
+  if (testsWithVariants.length > 0) {
+    insights.summary.avgEngagementLift = testsWithVariants.reduce((sum, t) => sum + t.engagementLift, 0) / testsWithVariants.length;
+  }
+  
+  // Analyze content patterns
+  insights.contentLearnings = analyzeHistoricalPatterns(testsWithVariants);
+  
+  // Generate historical insights
+  if (insights.contentLearnings.winningElements.length > 0) {
+    const topWinner = insights.contentLearnings.winningElements[0];
+    insights.historicalInsights.push({
+      category: "content",
+      title: "Top Winning Element",
+      description: `"${topWinner.element}" appears in ${topWinner.frequency} winning variants with ${topWinner.impact}`,
+      confidence: topWinner.frequency >= 3 ? "high" : topWinner.frequency >= 2 ? "medium" : "low",
+      dataPoints: topWinner.frequency,
+    });
+  }
+  
+  if (insights.contentLearnings.losingElements.length > 0) {
+    const topLoser = insights.contentLearnings.losingElements[0];
+    insights.historicalInsights.push({
+      category: "content",
+      title: "Element to Avoid",
+      description: `"${topLoser.element}" appears in ${topLoser.frequency} losing variants`,
+      confidence: topLoser.frequency >= 3 ? "high" : topLoser.frequency >= 2 ? "medium" : "low",
+      dataPoints: topLoser.frequency,
+    });
+  }
+  
+  // Platform-specific insights
+  for (const platform of insights.platformBreakdown) {
+    if (platform.testsCompleted >= 3) {
+      insights.historicalInsights.push({
+        category: "platform",
+        title: `${PLATFORM_DISPLAY_NAMES[platform.platform as keyof typeof PLATFORM_DISPLAY_NAMES] || platform.platform} Performance`,
+        description: `${platform.testsCompleted} tests completed with ${platform.avgEngagementLift.toFixed(1)}% average lift`,
+        confidence: platform.testsCompleted >= 5 ? "high" : "medium",
+        dataPoints: platform.testsCompleted,
+        trend: platform.avgEngagementLift > 10 ? "improving" : platform.avgEngagementLift > 0 ? "stable" : "declining",
+      });
+    }
+  }
+  
+  // Confidence level insight
+  if (insights.summary.avgConfidenceLevel > 90) {
+    insights.historicalInsights.push({
+      category: "strategy",
+      title: "High Confidence Tests",
+      description: "Your tests consistently achieve high statistical confidence, indicating good sample sizes",
+      confidence: "high",
+      dataPoints: completedTests.length,
+    });
+  } else if (insights.summary.avgConfidenceLevel < 80) {
+    insights.historicalInsights.push({
+      category: "strategy",
+      title: "Improve Test Confidence",
+      description: "Consider running tests longer or with larger audiences to achieve higher confidence",
+      confidence: "medium",
+      dataPoints: completedTests.length,
+    });
+  }
+  
+  // Generate recommendations
+  if (insights.contentLearnings.winningElements.length > 0) {
+    insights.recommendations.push({
+      priority: "high",
+      title: "Replicate Winning Elements",
+      description: `Include "${insights.contentLearnings.winningElements[0].element}" in your content - it consistently performs well`,
+      basedOn: `${insights.contentLearnings.winningElements[0].frequency} winning variants`,
+    });
+  }
+  
+  if (insights.contentLearnings.losingElements.length > 0) {
+    insights.recommendations.push({
+      priority: "medium",
+      title: "Avoid Underperforming Elements",
+      description: `Consider reducing use of "${insights.contentLearnings.losingElements[0].element}" - it often appears in losing variants`,
+      basedOn: `${insights.contentLearnings.losingElements[0].frequency} losing variants`,
+    });
+  }
+  
+  if (insights.summary.bestPerformingPlatform) {
+    const bestPlatform = insights.platformBreakdown.find(p => p.platform === insights.summary.bestPerformingPlatform);
+    if (bestPlatform && bestPlatform.winningPatterns.length > 0) {
+      insights.recommendations.push({
+        priority: "medium",
+        title: `Optimize for ${PLATFORM_DISPLAY_NAMES[bestPlatform.platform as keyof typeof PLATFORM_DISPLAY_NAMES] || bestPlatform.platform}`,
+        description: `Your best results come from this platform. Focus on: ${bestPlatform.winningPatterns.slice(0, 3).join(", ")}`,
+        basedOn: `${bestPlatform.testsCompleted} completed tests`,
+      });
+    }
+  }
+  
+  // Test frequency analysis
+  if (completedTests.length >= 2) {
+    const sortedByDate = [...completedTests].sort((a, b) => 
+      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+    
+    const firstTest = new Date(sortedByDate[0].createdAt);
+    const lastTest = new Date(sortedByDate[sortedByDate.length - 1].createdAt);
+    const monthsDiff = Math.max(1, (lastTest.getTime() - firstTest.getTime()) / (1000 * 60 * 60 * 24 * 30));
+    
+    insights.timeAnalysis.testFrequency = completedTests.length / monthsDiff;
+    
+    if (insights.timeAnalysis.testFrequency < 2) {
+      insights.recommendations.push({
+        priority: "low",
+        title: "Increase Testing Frequency",
+        description: "Running more A/B tests will help you learn faster and optimize your content strategy",
+        basedOn: `${insights.timeAnalysis.testFrequency.toFixed(1)} tests per month`,
+      });
+    }
+  }
+  
+  return insights;
+}

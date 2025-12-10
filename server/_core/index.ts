@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { appRouter } from "../routers";
 import rssRouter from "../rss";
 import sitemapRouter from "../sitemap";
+import digestTrackingRouter from "../digestTracking";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
@@ -41,6 +42,9 @@ async function startServer() {
   // RSS feed and sitemap for SEO
   app.use(rssRouter);
   app.use(sitemapRouter);
+  
+  // Digest email tracking (open/click tracking)
+  app.use(digestTrackingRouter);
   // tRPC API
   app.use(
     "/api/trpc",

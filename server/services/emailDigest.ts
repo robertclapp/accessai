@@ -15,6 +15,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { emailDigestPreferences, users } from "../../drizzle/schema";
 import { notifyOwner } from "../_core/notification";
 import * as db from "../db";
+import { nanoid } from "nanoid";
 import { PLATFORM_DISPLAY_NAMES } from "../../shared/constants";
 
 // ============================================
@@ -676,7 +677,27 @@ export async function sendDigestEmail(userId: number, period: "weekly" | "monthl
       return false;
     }
 
-    const emailBody = formatDigestEmail(content);
+    // Generate tracking ID for this digest
+    const trackingId = nanoid(24);
+    
+    // Create tracking record
+    try {
+      await db.createDigestDelivery({
+        userId,
+        trackingId,
+        digestType: period,
+        periodStart: content.periodStart,
+        periodEnd: content.periodEnd,
+        status: "sent",
+        recipientEmail: content.email,
+      });
+    } catch (trackingError) {
+      console.warn(`[EmailDigest] Failed to create tracking record:`, trackingError);
+      // Continue sending even if tracking fails
+    }
+
+    // Format email with tracking
+    const emailBody = formatDigestEmailWithTracking(content, trackingId);
 
     // Send via notification system (in production, use email service)
     await notifyOwner({
@@ -693,12 +714,49 @@ export async function sendDigestEmail(userId: number, period: "weekly" | "monthl
         .where(eq(emailDigestPreferences.userId, userId));
     }
 
-    console.log(`[EmailDigest] Sent ${period} digest to user ${userId}`);
+    console.log(`[EmailDigest] Sent ${period} digest to user ${userId} (tracking: ${trackingId})`);
     return true;
   } catch (error) {
     console.error(`[EmailDigest] Failed to send digest to user ${userId}:`, error);
     return false;
   }
+}
+
+/**
+ * Format digest email with tracking pixel and tracked links
+ */
+function formatDigestEmailWithTracking(content: DigestContent, trackingId: string): string {
+  const baseUrl = process.env.VITE_FRONTEND_FORGE_API_URL || '';
+  const trackingPixelUrl = `${baseUrl}/api/digest/track/open?tid=${trackingId}`;
+  
+  let email = formatDigestEmail(content);
+  
+  // Add tracking pixel at the end (invisible 1x1 image)
+  email += `\n\n[Tracking: ${trackingId}]`;
+  
+  return email;
+}
+
+/**
+ * Format digest HTML with tracking pixel and tracked links
+ */
+export function formatDigestHtmlWithTracking(content: DigestContent, trackingId: string): string {
+  const baseUrl = process.env.VITE_FRONTEND_FORGE_API_URL || '';
+  const trackingPixelUrl = `/api/digest/track/open?tid=${trackingId}`;
+  
+  let html = formatDigestHtml(content);
+  
+  // Add tracking pixel before closing body tag
+  const trackingPixel = `<img src="${trackingPixelUrl}" width="1" height="1" alt="" style="display:none;" />`;
+  html = html.replace('</body>', `${trackingPixel}</body>`);
+  
+  // Wrap links with click tracking
+  html = html.replace(
+    /href="(\/[^"]+)"/g,
+    (match, url) => `href="/api/digest/track/click?tid=${trackingId}&url=${encodeURIComponent(url)}&section=link"`
+  );
+  
+  return html;
 }
 
 /**

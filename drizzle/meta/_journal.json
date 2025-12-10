@@ -134,6 +134,13 @@
       "when": 1765375597458,
       "tag": "0018_overconfident_la_nuit",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "5",
+      "when": 1765378354261,
+      "tag": "0019_curly_sprite",
+      "breakpoints": true
     }
   ]
 }

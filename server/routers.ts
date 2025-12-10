@@ -31,6 +31,7 @@ import {
   generateTestInsights,
   getTestInsights,
   generateCrossTestInsights,
+  generateTestHistoryInsights,
 } from "./services/abTestInsights";
 
 // ============================================
@@ -1473,6 +1474,22 @@ ${aiContext}`
         const success = await sendDigestEmail(ctx.user.id, input.period);
         return { success };
       }),
+    
+    /** Get digest delivery tracking statistics */
+    getDigestDeliveryStats: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await db.getDigestDeliveryStats(ctx.user.id);
+      }),
+    
+    /** Get digest delivery history */
+    getDigestDeliveryHistory: protectedProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(100).optional().default(20),
+        offset: z.number().min(0).optional().default(0),
+      }))
+      .query(async ({ ctx, input }) => {
+        return await db.getDigestDeliveries(ctx.user.id, input.limit, input.offset);
+      }),
   }),
 
   // ============================================
@@ -2402,6 +2419,12 @@ ${aiContext}`
       .input(z.object({ platform: platformSchema.exclude(["all"]).optional() }))
       .query(async ({ ctx, input }) => {
         return await generateCrossTestInsights(ctx.user.id, input.platform);
+      }),
+    
+    /** Get comprehensive historical insights across all tests */
+    getHistoryInsights: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await generateTestHistoryInsights(ctx.user.id);
       }),
   }),
 

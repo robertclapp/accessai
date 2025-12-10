@@ -477,3 +477,39 @@
 - [x] Add insights display to A/B test results
 - [x] Cache insights to avoid repeated API calls
 - [x] Write tests for insights generation (250 tests passing)
+
+
+## Mastodon Template Management UI (New)
+- [x] Create MastodonTemplates page component
+- [x] Build template list view with categories
+- [x] Add template creation dialog
+- [x] Add template editing dialog
+- [x] Build live preview component showing formatted post
+- [x] Display CW preview with spoiler tag
+- [x] Show hashtag preview with CamelCase formatting
+- [x] Add template deletion with confirmation
+- [x] Add template search and filtering
+- [x] Add route to App.tsx and navigation
+- [x] Write tests for template management (285 tests passing)
+
+## Digest Delivery Tracking (New)
+- [x] Add tracking fields to digest preferences (opens, clicks)
+- [x] Create digest_tracking table for individual send records
+- [x] Add tracking pixel endpoint for open tracking
+- [x] Add click tracking endpoint with redirect
+- [x] Update digest HTML to include tracking pixel
+- [x] Wrap links with click tracking URLs
+- [x] Build delivery analytics display in Settings
+- [x] Show open rate and click rate metrics
+- [x] Write tests for delivery tracking (318 tests passing)
+
+## A/B Test History Insights (New)
+- [x] Create aggregated insights service
+- [x] Analyze patterns across all completed tests
+- [x] Identify consistently winning content patterns
+- [x] Generate long-term strategy recommendations
+- [x] Build history insights dashboard component
+- [x] Show pattern frequency charts
+- [x] Display top performing content characteristics
+- [x] Add insights summary to A/B Testing page
+- [x] Write tests for history insights (339 tests passing)

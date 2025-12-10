@@ -26,7 +26,8 @@ import {
   abTests, InsertABTest, ABTest,
   abTestVariants, InsertABTestVariant, ABTestVariant,
   cwPresets, InsertCWPreset, CWPreset,
-  mastodonTemplates, InsertMastodonTemplate, MastodonTemplate
+  mastodonTemplates, InsertMastodonTemplate, MastodonTemplate,
+  digestDeliveryTracking, InsertDigestDeliveryTracking, DigestDeliveryTracking
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -2654,4 +2655,175 @@ export async function seedMastodonTemplates(): Promise<void> {
   for (const template of defaults) {
     await db.insert(mastodonTemplates).values(template);
   }
+}
+
+
+// ============================================
+// DIGEST DELIVERY TRACKING OPERATIONS
+// ============================================
+
+/**
+ * Create a new digest delivery tracking record
+ */
+export async function createDigestDelivery(data: InsertDigestDeliveryTracking): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(digestDeliveryTracking).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Get digest delivery by tracking ID
+ */
+export async function getDigestDeliveryByTrackingId(trackingId: string): Promise<DigestDeliveryTracking | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db
+    .select()
+    .from(digestDeliveryTracking)
+    .where(eq(digestDeliveryTracking.trackingId, trackingId))
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+/**
+ * Record a digest open event
+ */
+export async function recordDigestOpen(
+  trackingId: string, 
+  userAgent?: string, 
+  ipHash?: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  const existing = await getDigestDeliveryByTrackingId(trackingId);
+  if (!existing) return;
+  
+  const updates: Partial<InsertDigestDeliveryTracking> = {
+    openCount: (existing.openCount || 0) + 1,
+    status: "opened",
+  };
+  
+  // Only set openedAt on first open
+  if (!existing.openedAt) {
+    updates.openedAt = new Date();
+  }
+  
+  if (userAgent) {
+    updates.userAgent = userAgent;
+  }
+  
+  if (ipHash) {
+    updates.ipHash = ipHash;
+  }
+  
+  await db
+    .update(digestDeliveryTracking)
+    .set(updates)
+    .where(eq(digestDeliveryTracking.trackingId, trackingId));
+}
+
+/**
+ * Record a digest link click event
+ */
+export async function recordDigestClick(
+  trackingId: string,
+  clickedUrl: string,
+  section?: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  const existing = await getDigestDeliveryByTrackingId(trackingId);
+  if (!existing) return;
+  
+  const clickedLinks = existing.clickedLinks || [];
+  clickedLinks.push({
+    url: clickedUrl,
+    clickedAt: Date.now(),
+    section,
+  });
+  
+  const updates: Partial<InsertDigestDeliveryTracking> = {
+    clickCount: (existing.clickCount || 0) + 1,
+    clickedLinks,
+    status: "clicked",
+  };
+  
+  // Only set firstClickAt on first click
+  if (!existing.firstClickAt) {
+    updates.firstClickAt = new Date();
+  }
+  
+  await db
+    .update(digestDeliveryTracking)
+    .set(updates)
+    .where(eq(digestDeliveryTracking.trackingId, trackingId));
+}
+
+/**
+ * Get digest delivery statistics for a user
+ */
+export async function getDigestDeliveryStats(userId: number): Promise<{
+  totalSent: number;
+  totalOpened: number;
+  totalClicked: number;
+  openRate: number;
+  clickRate: number;
+  recentDeliveries: DigestDeliveryTracking[];
+}> {
+  const db = await getDb();
+  if (!db) {
+    return {
+      totalSent: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      openRate: 0,
+      clickRate: 0,
+      recentDeliveries: [],
+    };
+  }
+  
+  const deliveries = await db
+    .select()
+    .from(digestDeliveryTracking)
+    .where(eq(digestDeliveryTracking.userId, userId))
+    .orderBy(desc(digestDeliveryTracking.sentAt));
+  
+  const totalSent = deliveries.length;
+  const totalOpened = deliveries.filter(d => d.openedAt !== null).length;
+  const totalClicked = deliveries.filter(d => d.firstClickAt !== null).length;
+  
+  return {
+    totalSent,
+    totalOpened,
+    totalClicked,
+    openRate: totalSent > 0 ? (totalOpened / totalSent) * 100 : 0,
+    clickRate: totalSent > 0 ? (totalClicked / totalSent) * 100 : 0,
+    recentDeliveries: deliveries.slice(0, 10),
+  };
+}
+
+/**
+ * Get all digest deliveries for a user with pagination
+ */
+export async function getDigestDeliveries(
+  userId: number,
+  limit: number = 20,
+  offset: number = 0
+): Promise<DigestDeliveryTracking[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(digestDeliveryTracking)
+    .where(eq(digestDeliveryTracking.userId, userId))
+    .orderBy(desc(digestDeliveryTracking.sentAt))
+    .limit(limit)
+    .offset(offset);
 }

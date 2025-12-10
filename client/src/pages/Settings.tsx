@@ -71,6 +71,91 @@ interface WritingStyleProfile {
   targetAudience?: string;
 }
 
+/** Digest Delivery Stats Component */
+function DigestDeliveryStats() {
+  const { data: stats, isLoading } = trpc.settings.getDigestDeliveryStats.useQuery();
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-4">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  
+  if (!stats || stats.totalSent === 0) {
+    return (
+      <div className="space-y-4">
+        <h3 className="font-medium">Delivery Analytics</h3>
+        <div className="bg-muted/50 rounded-lg p-6 text-center">
+          <Mail className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+          <p className="text-sm text-muted-foreground">
+            No digest emails sent yet. Send a test digest to see delivery analytics.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-4">
+      <h3 className="font-medium">Delivery Analytics</h3>
+      <p className="text-sm text-muted-foreground">
+        Track how your digest emails are performing
+      </p>
+      
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-muted/50 rounded-lg p-4 text-center">
+          <div className="text-2xl font-bold">{stats.totalSent}</div>
+          <div className="text-xs text-muted-foreground">Total Sent</div>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-4 text-center">
+          <div className="text-2xl font-bold">{stats.totalOpened}</div>
+          <div className="text-xs text-muted-foreground">Opened</div>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-4 text-center">
+          <div className="text-2xl font-bold text-green-600">{stats.openRate.toFixed(1)}%</div>
+          <div className="text-xs text-muted-foreground">Open Rate</div>
+        </div>
+        <div className="bg-muted/50 rounded-lg p-4 text-center">
+          <div className="text-2xl font-bold text-blue-600">{stats.clickRate.toFixed(1)}%</div>
+          <div className="text-xs text-muted-foreground">Click Rate</div>
+        </div>
+      </div>
+      
+      {/* Recent Deliveries */}
+      {stats.recentDeliveries && stats.recentDeliveries.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-sm font-medium">Recent Deliveries</h4>
+          <div className="space-y-2">
+            {stats.recentDeliveries.slice(0, 5).map((delivery) => (
+              <div 
+                key={delivery.id} 
+                className="flex items-center justify-between bg-muted/30 rounded-lg p-3 text-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <Badge variant={delivery.status === "clicked" ? "default" : delivery.status === "opened" ? "secondary" : "outline"}>
+                    {delivery.status}
+                  </Badge>
+                  <span className="capitalize">{delivery.digestType}</span>
+                </div>
+                <div className="flex items-center gap-4 text-muted-foreground">
+                  <span>{delivery.openCount || 0} opens</span>
+                  <span>{delivery.clickCount || 0} clicks</span>
+                  <span>
+                    {new Date(delivery.sentAt).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Email Digests Tab Component */
 function EmailDigestsTab() {
   const [digestEnabled, setDigestEnabled] = useState(false);
@@ -520,6 +605,11 @@ function EmailDigestsTab() {
                 Send Test Digest
               </Button>
             </div>
+            
+            <Separator />
+            
+            {/* Delivery Tracking Stats */}
+            <DigestDeliveryStats />
           </>
         )}
         

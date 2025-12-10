@@ -823,3 +823,63 @@ export const mastodonTemplates = mysqlTable("mastodon_templates", {
 
 export type MastodonTemplate = typeof mastodonTemplates.$inferSelect;
 export type InsertMastodonTemplate = typeof mastodonTemplates.$inferInsert;
+
+
+/**
+ * Email digest delivery tracking for open and click analytics.
+ * Tracks individual digest sends with engagement metrics.
+ */
+export const digestDeliveryTracking = mysqlTable("digest_delivery_tracking", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  
+  /** Unique tracking ID for this digest send */
+  trackingId: varchar("trackingId", { length: 64 }).notNull().unique(),
+  
+  /** Digest type (weekly/monthly) */
+  digestType: mysqlEnum("digestType", ["weekly", "monthly"]).notNull(),
+  
+  /** Period covered by this digest */
+  periodStart: timestamp("periodStart").notNull(),
+  periodEnd: timestamp("periodEnd").notNull(),
+  
+  /** Delivery status */
+  status: mysqlEnum("status", ["sent", "opened", "clicked", "bounced", "failed"]).default("sent").notNull(),
+  
+  /** When the digest was sent */
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+  
+  /** When the digest was first opened (tracking pixel fired) */
+  openedAt: timestamp("openedAt"),
+  
+  /** Number of times the digest was opened */
+  openCount: int("openCount").default(0),
+  
+  /** When a link was first clicked */
+  firstClickAt: timestamp("firstClickAt"),
+  
+  /** Total number of link clicks */
+  clickCount: int("clickCount").default(0),
+  
+  /** Links clicked (stored as JSON array) */
+  clickedLinks: json("clickedLinks").$type<{
+    url: string;
+    clickedAt: number; // timestamp
+    section?: string; // e.g., "analytics", "top_posts", "goals"
+  }[]>(),
+  
+  /** Email recipient address */
+  recipientEmail: varchar("recipientEmail", { length: 320 }),
+  
+  /** User agent from open tracking */
+  userAgent: text("userAgent"),
+  
+  /** IP address from open tracking (hashed for privacy) */
+  ipHash: varchar("ipHash", { length: 64 }),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DigestDeliveryTracking = typeof digestDeliveryTracking.$inferSelect;
+export type InsertDigestDeliveryTracking = typeof digestDeliveryTracking.$inferInsert;

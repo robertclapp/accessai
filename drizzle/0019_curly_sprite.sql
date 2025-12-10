@@ -1,0 +1,22 @@
+CREATE TABLE `digest_delivery_tracking` (
+	`id` int AUTO_INCREMENT NOT NULL,
+	`userId` int NOT NULL,
+	`trackingId` varchar(64) NOT NULL,
+	`digestType` enum('weekly','monthly') NOT NULL,
+	`periodStart` timestamp NOT NULL,
+	`periodEnd` timestamp NOT NULL,
+	`status` enum('sent','opened','clicked','bounced','failed') NOT NULL DEFAULT 'sent',
+	`sentAt` timestamp NOT NULL DEFAULT (now()),
+	`openedAt` timestamp,
+	`openCount` int DEFAULT 0,
+	`firstClickAt` timestamp,
+	`clickCount` int DEFAULT 0,
+	`clickedLinks` json,
+	`recipientEmail` varchar(320),
+	`userAgent` text,
+	`ipHash` varchar(64),
+	`createdAt` timestamp NOT NULL DEFAULT (now()),
+	`updatedAt` timestamp NOT NULL DEFAULT (now()) ON UPDATE CURRENT_TIMESTAMP,
+	CONSTRAINT `digest_delivery_tracking_id` PRIMARY KEY(`id`),
+	CONSTRAINT `digest_delivery_tracking_trackingId_unique` UNIQUE(`trackingId`)
+);
