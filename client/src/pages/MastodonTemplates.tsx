@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, Edit2, Trash2, Eye, Search, FileText, AlertTriangle, Copy } from "lucide-react";
+import { Plus, Edit2, Trash2, Eye, Search, FileText, AlertTriangle, Copy, Folder, Settings, Palette } from "lucide-react";
 
 const CATEGORIES = [
   { value: "news", label: "News", color: "bg-blue-500" },
@@ -44,8 +44,40 @@ export default function MastodonTemplates() {
     defaultCW: "",
     description: "",
   });
+  
+  // Category management state
+  const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
+  const [newCategory, setNewCategory] = useState({ name: "", description: "", color: "#6366f1" });
+  const [editingCategory, setEditingCategory] = useState<any>(null);
 
   const { data: templates, isLoading, refetch } = trpc.mastodonTemplates.list.useQuery();
+  const { data: customCategories, refetch: refetchCategories } = trpc.templateCategories.list.useQuery();
+  
+  const createCategoryMutation = trpc.templateCategories.create.useMutation({
+    onSuccess: () => {
+      toast.success("Category created");
+      setNewCategory({ name: "", description: "", color: "#6366f1" });
+      refetchCategories();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const updateCategoryMutation = trpc.templateCategories.update.useMutation({
+    onSuccess: () => {
+      toast.success("Category updated");
+      setEditingCategory(null);
+      refetchCategories();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const deleteCategoryMutation = trpc.templateCategories.delete.useMutation({
+    onSuccess: () => {
+      toast.success("Category deleted");
+      refetchCategories();
+    },
+    onError: (error) => toast.error(error.message),
+  });
   
   const createMutation = trpc.mastodonTemplates.create.useMutation({
     onSuccess: () => {
@@ -146,13 +178,18 @@ export default function MastodonTemplates() {
               Create and manage templates with content warnings for Mastodon posts
             </p>
           </div>
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                New Template
-              </Button>
-            </DialogTrigger>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsCategoryDialogOpen(true)}>
+              <Folder className="mr-2 h-4 w-4" />
+              Manage Categories
+            </Button>
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="mr-2 h-4 w-4" />
+                  New Template
+                </Button>
+              </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Create Mastodon Template</DialogTitle>
@@ -253,6 +290,7 @@ export default function MastodonTemplates() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
         </div>
 
         {/* Filters */}
@@ -512,6 +550,146 @@ export default function MastodonTemplates() {
                 setIsEditOpen(true);
               }}>
                 Edit Template
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Category Management Dialog */}
+        <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Manage Categories</DialogTitle>
+              <DialogDescription>
+                Create custom categories to organize your templates
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Create new category */}
+              <div className="p-4 border rounded-lg space-y-3">
+                <h4 className="font-medium">Create New Category</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    placeholder="Category name"
+                    value={newCategory.name}
+                    onChange={(e) => setNewCategory({ ...newCategory, name: e.target.value })}
+                  />
+                  <div className="flex gap-2">
+                    <Input
+                      type="color"
+                      value={newCategory.color}
+                      onChange={(e) => setNewCategory({ ...newCategory, color: e.target.value })}
+                      className="w-12 h-10 p-1 cursor-pointer"
+                    />
+                    <Button
+                      onClick={() => createCategoryMutation.mutate(newCategory)}
+                      disabled={!newCategory.name || createCategoryMutation.isPending}
+                      className="flex-1"
+                    >
+                      <Plus className="mr-1 h-4 w-4" />
+                      Add
+                    </Button>
+                  </div>
+                </div>
+                <Input
+                  placeholder="Description (optional)"
+                  value={newCategory.description}
+                  onChange={(e) => setNewCategory({ ...newCategory, description: e.target.value })}
+                />
+              </div>
+
+              {/* Custom categories list */}
+              <div className="space-y-2">
+                <h4 className="font-medium">Your Categories</h4>
+                {customCategories?.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    No custom categories yet. Create one above!
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {customCategories?.map((cat) => (
+                      <div key={cat.id} className="flex items-center gap-2 p-2 border rounded">
+                        <div
+                          className="w-4 h-4 rounded"
+                          style={{ backgroundColor: cat.color || "#6366f1" }}
+                        />
+                        {editingCategory?.id === cat.id ? (
+                          <>
+                            <Input
+                              value={editingCategory.name}
+                              onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                              className="flex-1 h-8"
+                            />
+                            <Input
+                              type="color"
+                              value={editingCategory.color}
+                              onChange={(e) => setEditingCategory({ ...editingCategory, color: e.target.value })}
+                              className="w-8 h-8 p-0.5"
+                            />
+                            <Button
+                              size="sm"
+                              onClick={() => updateCategoryMutation.mutate(editingCategory)}
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingCategory(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="flex-1 font-medium">{cat.name}</span>
+                            <span className="text-xs text-muted-foreground">
+                              {cat.templateCount || 0} templates
+                            </span>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingCategory({ id: cat.id, name: cat.name, color: cat.color })}
+                            >
+                              <Edit2 className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                if (confirm("Delete this category?")) {
+                                  deleteCategoryMutation.mutate({ id: cat.id });
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Default categories info */}
+              <div className="pt-2 border-t">
+                <h4 className="font-medium text-sm mb-2">Default Categories</h4>
+                <div className="flex flex-wrap gap-1">
+                  {CATEGORIES.map(cat => (
+                    <Badge key={cat.value} variant="secondary" className="text-xs">
+                      {cat.label}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Default categories cannot be modified
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsCategoryDialogOpen(false)}>
+                Close
               </Button>
             </DialogFooter>
           </DialogContent>

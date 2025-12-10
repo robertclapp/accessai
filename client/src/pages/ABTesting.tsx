@@ -42,7 +42,10 @@ import {
   ArrowUp,
   ArrowDown,
   Download,
-  FileText
+  FileText,
+  CalendarRange,
+  ArrowRight,
+  Minus
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -71,6 +74,7 @@ export default function ABTesting() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isHistoryInsightsOpen, setIsHistoryInsightsOpen] = useState(false);
+  const [isComparePeriodsOpen, setIsComparePeriodsOpen] = useState(false);
   const [selectedTestId, setSelectedTestId] = useState<number | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
@@ -307,6 +311,13 @@ export default function ABTesting() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsComparePeriodsOpen(true)}
+            >
+              <CalendarRange className="w-4 h-4 mr-2" />
+              Compare Periods
+            </Button>
             <Button
               variant="outline"
               onClick={() => setIsHistoryInsightsOpen(true)}
@@ -1048,6 +1059,12 @@ export default function ABTesting() {
         open={isHistoryInsightsOpen} 
         onOpenChange={setIsHistoryInsightsOpen} 
       />
+      
+      {/* Time Period Comparison Dialog */}
+      <TimePeriodComparisonDialog
+        open={isComparePeriodsOpen}
+        onOpenChange={setIsComparePeriodsOpen}
+      />
       </div>
     </DashboardLayout>
   );
@@ -1553,6 +1570,311 @@ function HistoryInsightsDialog({
             Refresh Insights
           </Button>
           <Button onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+
+// ============================================
+// TIME PERIOD COMPARISON DIALOG COMPONENT
+// ============================================
+
+function TimePeriodComparisonDialog({ 
+  open, 
+  onOpenChange 
+}: { 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+}) {
+  // Default to comparing last 30 days vs previous 30 days
+  const today = new Date();
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const sixtyDaysAgo = new Date(today.getTime() - 60 * 24 * 60 * 60 * 1000);
+  
+  const [period1Start, setPeriod1Start] = useState(sixtyDaysAgo.toISOString().split("T")[0]);
+  const [period1End, setPeriod1End] = useState(thirtyDaysAgo.toISOString().split("T")[0]);
+  const [period2Start, setPeriod2Start] = useState(thirtyDaysAgo.toISOString().split("T")[0]);
+  const [period2End, setPeriod2End] = useState(today.toISOString().split("T")[0]);
+  
+  const { data: comparison, isLoading, refetch } = trpc.abTesting.compareTimePeriods.useQuery(
+    { period1Start, period1End, period2Start, period2End },
+    { enabled: open }
+  );
+  
+  const getTrendIcon = (trend: "improving" | "stable" | "declining") => {
+    switch (trend) {
+      case "improving": return <ArrowUp className="w-4 h-4 text-green-500" />;
+      case "declining": return <ArrowDown className="w-4 h-4 text-red-500" />;
+      default: return <Minus className="w-4 h-4 text-muted-foreground" />;
+    }
+  };
+  
+  const getTrendColor = (trend: "improving" | "stable" | "declining") => {
+    switch (trend) {
+      case "improving": return "text-green-500";
+      case "declining": return "text-red-500";
+      default: return "text-muted-foreground";
+    }
+  };
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarRange className="w-5 h-5" />
+            Compare Time Periods
+          </DialogTitle>
+          <DialogDescription>
+            Analyze how your A/B testing performance has changed over time
+          </DialogDescription>
+        </DialogHeader>
+        
+        {/* Date Range Selectors */}
+        <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Period 1 (Earlier)</Label>
+            <div className="flex gap-2 items-center">
+              <Input
+                type="date"
+                value={period1Start}
+                onChange={(e) => setPeriod1Start(e.target.value)}
+                className="flex-1"
+              />
+              <ArrowRight className="w-4 h-4 text-muted-foreground" />
+              <Input
+                type="date"
+                value={period1End}
+                onChange={(e) => setPeriod1End(e.target.value)}
+                className="flex-1"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Period 2 (Recent)</Label>
+            <div className="flex gap-2 items-center">
+              <Input
+                type="date"
+                value={period2Start}
+                onChange={(e) => setPeriod2Start(e.target.value)}
+                className="flex-1"
+              />
+              <ArrowRight className="w-4 h-4 text-muted-foreground" />
+              <Input
+                type="date"
+                value={period2End}
+                onChange={(e) => setPeriod2End(e.target.value)}
+                className="flex-1"
+              />
+            </div>
+          </div>
+        </div>
+        
+        <Button 
+          variant="outline" 
+          onClick={() => refetch()} 
+          className="w-full"
+          disabled={isLoading}
+        >
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <CalendarRange className="w-4 h-4 mr-2" />
+          )}
+          Compare Periods
+        </Button>
+        
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        )}
+        
+        {comparison && !isLoading && (
+          <div className="space-y-6">
+            {/* Summary Comparison */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Tests Completed
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-muted-foreground text-sm">{comparison.comparison.testsCompleted.period1}</span>
+                      <ArrowRight className="w-3 h-3 inline mx-1 text-muted-foreground" />
+                      <span className="text-lg font-bold">{comparison.comparison.testsCompleted.period2}</span>
+                    </div>
+                    {getTrendIcon(comparison.comparison.testsCompleted.trend)}
+                  </div>
+                  <div className={`text-xs ${getTrendColor(comparison.comparison.testsCompleted.trend)}`}>
+                    {comparison.comparison.testsCompleted.change > 0 ? "+" : ""}
+                    {comparison.comparison.testsCompleted.change} tests
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Avg Confidence
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-muted-foreground text-sm">{comparison.comparison.avgConfidenceLevel.period1.toFixed(0)}%</span>
+                      <ArrowRight className="w-3 h-3 inline mx-1 text-muted-foreground" />
+                      <span className="text-lg font-bold">{comparison.comparison.avgConfidenceLevel.period2.toFixed(0)}%</span>
+                    </div>
+                    {getTrendIcon(comparison.comparison.avgConfidenceLevel.trend)}
+                  </div>
+                  <div className={`text-xs ${getTrendColor(comparison.comparison.avgConfidenceLevel.trend)}`}>
+                    {comparison.comparison.avgConfidenceLevel.change > 0 ? "+" : ""}
+                    {comparison.comparison.avgConfidenceLevel.change.toFixed(1)}%
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Avg Engagement Lift
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-muted-foreground text-sm">{comparison.comparison.avgEngagementLift.period1.toFixed(0)}%</span>
+                      <ArrowRight className="w-3 h-3 inline mx-1 text-muted-foreground" />
+                      <span className="text-lg font-bold">{comparison.comparison.avgEngagementLift.period2.toFixed(0)}%</span>
+                    </div>
+                    {getTrendIcon(comparison.comparison.avgEngagementLift.trend)}
+                  </div>
+                  <div className={`text-xs ${getTrendColor(comparison.comparison.avgEngagementLift.trend)}`}>
+                    {comparison.comparison.avgEngagementLift.change > 0 ? "+" : ""}
+                    {comparison.comparison.avgEngagementLift.change.toFixed(1)}%
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Win Rate
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-muted-foreground text-sm">{comparison.comparison.winRate.period1.toFixed(0)}%</span>
+                      <ArrowRight className="w-3 h-3 inline mx-1 text-muted-foreground" />
+                      <span className="text-lg font-bold">{comparison.comparison.winRate.period2.toFixed(0)}%</span>
+                    </div>
+                    {getTrendIcon(comparison.comparison.winRate.trend)}
+                  </div>
+                  <div className={`text-xs ${getTrendColor(comparison.comparison.winRate.trend)}`}>
+                    {comparison.comparison.winRate.change > 0 ? "+" : ""}
+                    {comparison.comparison.winRate.change.toFixed(1)}%
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            
+            {/* Platform Comparison */}
+            {comparison.platformComparison.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-medium flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5" />
+                  Platform Performance
+                </h3>
+                <div className="grid gap-2">
+                  {comparison.platformComparison.map((platform) => (
+                    <div 
+                      key={platform.platform}
+                      className="flex items-center justify-between p-3 bg-muted/50 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="font-medium">
+                          {PLATFORM_DISPLAY_NAMES[platform.platform as keyof typeof PLATFORM_DISPLAY_NAMES] || platform.platform}
+                        </span>
+                        <Badge variant="outline" className="text-xs">
+                          {platform.period1Tests} → {platform.period2Tests} tests
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-muted-foreground">
+                          {platform.period1AvgLift.toFixed(1)}% → {platform.period2AvgLift.toFixed(1)}% lift
+                        </span>
+                        {getTrendIcon(platform.trend)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Insights */}
+            {comparison.insights.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-medium flex items-center gap-2">
+                  <Lightbulb className="w-5 h-5" />
+                  Key Insights
+                </h3>
+                <div className="space-y-2">
+                  {comparison.insights.map((insight, idx) => (
+                    <div 
+                      key={idx}
+                      className={`p-3 rounded-lg border-l-4 ${
+                        insight.impact === "positive" ? "bg-green-500/10 border-green-500" :
+                        insight.impact === "negative" ? "bg-red-500/10 border-red-500" :
+                        "bg-muted border-muted-foreground"
+                      }`}
+                    >
+                      <div className="font-medium">{insight.title}</div>
+                      <div className="text-sm text-muted-foreground">{insight.description}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Recommendations */}
+            {comparison.recommendations.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-medium flex items-center gap-2">
+                  <Target className="w-5 h-5" />
+                  Recommendations
+                </h3>
+                <ul className="space-y-2">
+                  {comparison.recommendations.map((rec, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-sm">
+                      <CheckCircle className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                      {rec}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            {comparison.comparison.testsCompleted.period1 === 0 && comparison.comparison.testsCompleted.period2 === 0 && (
+              <div className="text-center py-8 text-muted-foreground">
+                <CalendarRange className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No completed tests found in the selected time periods.</p>
+                <p className="text-sm">Try selecting different date ranges.</p>
+              </div>
+            )}
+          </div>
+        )}
+        
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
         </DialogFooter>

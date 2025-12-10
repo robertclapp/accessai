@@ -672,6 +672,12 @@ export const emailDigestPreferences = mysqlTable("email_digest_preferences", {
   /** Last digest sent timestamp */
   lastSentAt: timestamp("lastSentAt"),
   
+  /** Pause/Resume functionality */
+  isPaused: boolean("isPaused").default(false),
+  pausedAt: timestamp("pausedAt"),
+  pauseReason: varchar("pauseReason", { length: 255 }),
+  pauseUntil: timestamp("pauseUntil"), // Optional auto-resume date
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -883,3 +889,37 @@ export const digestDeliveryTracking = mysqlTable("digest_delivery_tracking", {
 
 export type DigestDeliveryTracking = typeof digestDeliveryTracking.$inferSelect;
 export type InsertDigestDeliveryTracking = typeof digestDeliveryTracking.$inferInsert;
+
+
+/**
+ * Custom template categories for organizing Mastodon templates.
+ * Users can create their own categories beyond the default ones.
+ */
+export const templateCategories = mysqlTable("template_categories", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  
+  /** Category name */
+  name: varchar("name", { length: 100 }).notNull(),
+  
+  /** Category description */
+  description: text("description"),
+  
+  /** Color for visual identification (hex code) */
+  color: varchar("color", { length: 7 }).default("#6366f1"),
+  
+  /** Icon name (from lucide icons) */
+  icon: varchar("icon", { length: 50 }).default("folder"),
+  
+  /** Display order */
+  sortOrder: int("sortOrder").default(0),
+  
+  /** Number of templates in this category */
+  templateCount: int("templateCount").default(0),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TemplateCategory = typeof templateCategories.$inferSelect;
+export type InsertTemplateCategory = typeof templateCategories.$inferInsert;

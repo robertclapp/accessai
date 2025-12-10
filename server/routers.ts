@@ -33,6 +33,7 @@ import {
   getTestInsights,
   generateCrossTestInsights,
   generateTestHistoryInsights,
+  compareTimePeriods,
 } from "./services/abTestInsights";
 import { generateInsightsPdfHtml } from "./services/insightsPdfExport";
 
@@ -1498,6 +1499,31 @@ ${aiContext}`
       .query(async ({ ctx }) => {
         return await generateDigestPreview(ctx.user.id);
       }),
+    
+    /** Pause digest emails */
+    pauseDigest: protectedProcedure
+      .input(z.object({
+        reason: z.string().max(255).optional(),
+        pauseUntil: z.string().datetime().optional(), // ISO date string
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const pauseUntil = input.pauseUntil ? new Date(input.pauseUntil) : undefined;
+        await db.pauseDigestEmails(ctx.user.id, input.reason, pauseUntil);
+        return { success: true };
+      }),
+    
+    /** Resume digest emails */
+    resumeDigest: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        await db.resumeDigestEmails(ctx.user.id);
+        return { success: true };
+      }),
+    
+    /** Get digest pause status */
+    getDigestPauseStatus: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await db.getDigestPauseStatus(ctx.user.id);
+      }),
   }),
 
   // ============================================
@@ -2435,6 +2461,24 @@ ${aiContext}`
         return await generateTestHistoryInsights(ctx.user.id);
       }),
     
+    /** Compare A/B test performance between two time periods */
+    compareTimePeriods: protectedProcedure
+      .input(z.object({
+        period1Start: z.string(),
+        period1End: z.string(),
+        period2Start: z.string(),
+        period2End: z.string(),
+      }))
+      .query(async ({ ctx, input }) => {
+        return await compareTimePeriods(
+          ctx.user.id,
+          new Date(input.period1Start),
+          new Date(input.period1End),
+          new Date(input.period2Start),
+          new Date(input.period2End)
+        );
+      }),
+    
     /** Export history insights as PDF-ready HTML */
     exportHistoryInsightsPdf: protectedProcedure
       .input(z.object({
@@ -2645,6 +2689,57 @@ ${aiContext}`
         });
         
         return { id, name: newName };
+      }),
+  }),
+  
+  // ============================================
+  // TEMPLATE CATEGORIES ROUTER
+  // ============================================
+  templateCategories: router({
+    /** Get all custom categories for the current user */
+    list: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await db.getUserTemplateCategories(ctx.user.id);
+      }),
+    
+    /** Create a new category */
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(100),
+        description: z.string().max(500).optional(),
+        color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+        icon: z.string().max(50).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await db.createTemplateCategory({
+          ...input,
+          userId: ctx.user.id,
+        });
+        return { id };
+      }),
+    
+    /** Update a category */
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(100).optional(),
+        description: z.string().max(500).optional(),
+        color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+        icon: z.string().max(50).optional(),
+        sortOrder: z.number().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        await db.updateTemplateCategory(id, ctx.user.id, data);
+        return { success: true };
+      }),
+    
+    /** Delete a category */
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteTemplateCategory(input.id, ctx.user.id);
+        return { success: true };
       }),
   }),
 });

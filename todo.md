@@ -533,3 +533,28 @@
 - [x] Add export button to History Insights dialog
 - [x] Handle PDF download in browser
 - [x] Write tests for PDF export (366 tests passing)
+
+## Custom Template Categories Management (New)
+- [x] Create template_categories table in schema
+- [x] Add database functions for category CRUD
+- [x] Create category management endpoints in router
+- [x] Build category management UI component
+- [x] Add category selector to template creation/edit dialogs
+- [x] Update template list to filter by custom categories
+- [x] Write tests for category management (395 tests passing)
+
+## Digest Pause/Resume (New)
+- [x] Add pausedAt and pauseReason fields to digest preferences
+- [x] Create pause/resume endpoints
+- [x] Build pause/resume UI in Settings
+- [x] Show pause status indicator
+- [x] Prevent digest sending when paused
+- [x] Write tests for pause/resume functionality (395 tests passing)
+
+### Insights Comparison Over Time (New)
+- [x] Create time period comparison endpoint
+- [x] Build comparison UI with date range selectors
+- [x] Show side-by-side metrics comparison
+- [x] Display trend indicators (improving/declining)
+- [x] Generate period-specific insights
+- [x] Write tests for time comparison (395 tests passing)

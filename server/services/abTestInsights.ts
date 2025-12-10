@@ -947,3 +947,283 @@ export async function generateTestHistoryInsights(
   
   return insights;
 }
+
+
+// ============================================
+// TIME PERIOD COMPARISON
+// ============================================
+
+export interface TimePeriodComparison {
+  userId: number;
+  generatedAt: Date;
+  period1: {
+    startDate: Date;
+    endDate: Date;
+    label: string;
+  };
+  period2: {
+    startDate: Date;
+    endDate: Date;
+    label: string;
+  };
+  comparison: {
+    testsCompleted: {
+      period1: number;
+      period2: number;
+      change: number;
+      trend: "improving" | "stable" | "declining";
+    };
+    avgConfidenceLevel: {
+      period1: number;
+      period2: number;
+      change: number;
+      trend: "improving" | "stable" | "declining";
+    };
+    avgEngagementLift: {
+      period1: number;
+      period2: number;
+      change: number;
+      trend: "improving" | "stable" | "declining";
+    };
+    winRate: {
+      period1: number;
+      period2: number;
+      change: number;
+      trend: "improving" | "stable" | "declining";
+    };
+  };
+  platformComparison: {
+    platform: string;
+    period1Tests: number;
+    period2Tests: number;
+    period1AvgLift: number;
+    period2AvgLift: number;
+    trend: "improving" | "stable" | "declining";
+  }[];
+  insights: {
+    category: string;
+    title: string;
+    description: string;
+    impact: "positive" | "negative" | "neutral";
+  }[];
+  recommendations: string[];
+}
+
+/**
+ * Compare A/B test performance between two time periods
+ */
+export async function compareTimePeriods(
+  userId: number,
+  period1Start: Date,
+  period1End: Date,
+  period2Start: Date,
+  period2End: Date
+): Promise<TimePeriodComparison> {
+  const allTests = await db.getUserABTests(userId);
+  
+  // Filter tests by time period
+  const period1Tests = allTests.filter(t => {
+    const testDate = new Date(t.createdAt);
+    return testDate >= period1Start && testDate <= period1End && t.status === "completed";
+  });
+  
+  const period2Tests = allTests.filter(t => {
+    const testDate = new Date(t.createdAt);
+    return testDate >= period2Start && testDate <= period2End && t.status === "completed";
+  });
+  
+  // Calculate metrics for each period
+  const calculatePeriodMetrics = async (tests: typeof allTests) => {
+    if (tests.length === 0) {
+      return { avgConfidence: 0, avgLift: 0, winRate: 0 };
+    }
+    
+    let totalConfidence = 0;
+    let totalLift = 0;
+    let testsWithWinner = 0;
+    
+    for (const test of tests) {
+      totalConfidence += test.confidenceLevel || 0;
+      
+      if (test.winningVariantId) {
+        testsWithWinner++;
+        const testWithVariants = await db.getABTestWithVariants(test.id, test.userId);
+        const variants = testWithVariants?.variants || [];
+        const winner = variants.find((v: any) => v.id === test.winningVariantId);
+        const loser = variants.find((v: any) => v.id !== test.winningVariantId);
+        
+        if (winner && loser) {
+          const winnerEngagement = (winner.likes || 0) + (winner.comments || 0) + (winner.shares || 0);
+          const loserEngagement = (loser.likes || 0) + (loser.comments || 0) + (loser.shares || 0);
+          if (loserEngagement > 0) {
+            totalLift += ((winnerEngagement - loserEngagement) / loserEngagement) * 100;
+          }
+        }
+      }
+    }
+    
+    return {
+      avgConfidence: tests.length > 0 ? totalConfidence / tests.length : 0,
+      avgLift: testsWithWinner > 0 ? totalLift / testsWithWinner : 0,
+      winRate: tests.length > 0 ? (testsWithWinner / tests.length) * 100 : 0,
+    };
+  };
+  
+  const period1Metrics = await calculatePeriodMetrics(period1Tests);
+  const period2Metrics = await calculatePeriodMetrics(period2Tests);
+  
+  // Calculate trends
+  const getTrend = (val1: number, val2: number): "improving" | "stable" | "declining" => {
+    const change = val2 - val1;
+    if (Math.abs(change) < 5) return "stable";
+    return change > 0 ? "improving" : "declining";
+  };
+  
+  // Platform breakdown comparison
+  const platforms = Array.from(new Set([...period1Tests, ...period2Tests].map(t => t.platform)));
+  const platformComparison = await Promise.all(platforms.map(async platform => {
+    const p1Tests = period1Tests.filter(t => t.platform === platform);
+    const p2Tests = period2Tests.filter(t => t.platform === platform);
+    
+    const p1Metrics = await calculatePeriodMetrics(p1Tests);
+    const p2Metrics = await calculatePeriodMetrics(p2Tests);
+    
+    return {
+      platform,
+      period1Tests: p1Tests.length,
+      period2Tests: p2Tests.length,
+      period1AvgLift: p1Metrics.avgLift,
+      period2AvgLift: p2Metrics.avgLift,
+      trend: getTrend(p1Metrics.avgLift, p2Metrics.avgLift),
+    };
+  }));
+  
+  // Generate insights
+  const insights: TimePeriodComparison["insights"] = [];
+  
+  const testCountChange = period2Tests.length - period1Tests.length;
+  if (testCountChange > 0) {
+    insights.push({
+      category: "activity",
+      title: "Increased Testing Activity",
+      description: `You ran ${testCountChange} more tests in the recent period, showing improved experimentation habits.`,
+      impact: "positive",
+    });
+  } else if (testCountChange < 0) {
+    insights.push({
+      category: "activity",
+      title: "Decreased Testing Activity",
+      description: `Testing activity dropped by ${Math.abs(testCountChange)} tests. Consider maintaining consistent experimentation.`,
+      impact: "negative",
+    });
+  }
+  
+  const confidenceChange = period2Metrics.avgConfidence - period1Metrics.avgConfidence;
+  if (confidenceChange > 5) {
+    insights.push({
+      category: "quality",
+      title: "Improved Test Quality",
+      description: `Average confidence level increased by ${confidenceChange.toFixed(1)}%, indicating better test design.`,
+      impact: "positive",
+    });
+  } else if (confidenceChange < -5) {
+    insights.push({
+      category: "quality",
+      title: "Test Quality Needs Attention",
+      description: `Confidence levels dropped by ${Math.abs(confidenceChange).toFixed(1)}%. Consider running tests longer.`,
+      impact: "negative",
+    });
+  }
+  
+  const liftChange = period2Metrics.avgLift - period1Metrics.avgLift;
+  if (liftChange > 10) {
+    insights.push({
+      category: "performance",
+      title: "Better Content Optimization",
+      description: `Average engagement lift improved by ${liftChange.toFixed(1)}%, showing your learnings are paying off.`,
+      impact: "positive",
+    });
+  }
+  
+  // Improving platforms
+  const improvingPlatforms = platformComparison.filter(p => p.trend === "improving" && p.period2Tests >= 2);
+  if (improvingPlatforms.length > 0) {
+    insights.push({
+      category: "platform",
+      title: "Platform Improvements",
+      description: `Performance improved on ${improvingPlatforms.map(p => PLATFORM_DISPLAY_NAMES[p.platform as keyof typeof PLATFORM_DISPLAY_NAMES] || p.platform).join(", ")}.`,
+      impact: "positive",
+    });
+  }
+  
+  // Generate recommendations
+  const recommendations: string[] = [];
+  
+  if (period2Tests.length < period1Tests.length) {
+    recommendations.push("Increase your testing frequency to maintain learning momentum.");
+  }
+  
+  if (period2Metrics.avgConfidence < 85) {
+    recommendations.push("Run tests for longer durations to achieve higher statistical confidence.");
+  }
+  
+  const decliningPlatforms = platformComparison.filter(p => p.trend === "declining" && p.period2Tests >= 2);
+  if (decliningPlatforms.length > 0) {
+    recommendations.push(`Review your strategy on ${decliningPlatforms[0].platform} - performance has declined.`);
+  }
+  
+  if (period2Metrics.avgLift > period1Metrics.avgLift) {
+    recommendations.push("Continue applying the content patterns that are working well.");
+  }
+  
+  // Format period labels
+  const formatPeriodLabel = (start: Date, end: Date) => {
+    const startStr = start.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const endStr = end.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    return `${startStr} - ${endStr}`;
+  };
+  
+  return {
+    userId,
+    generatedAt: new Date(),
+    period1: {
+      startDate: period1Start,
+      endDate: period1End,
+      label: formatPeriodLabel(period1Start, period1End),
+    },
+    period2: {
+      startDate: period2Start,
+      endDate: period2End,
+      label: formatPeriodLabel(period2Start, period2End),
+    },
+    comparison: {
+      testsCompleted: {
+        period1: period1Tests.length,
+        period2: period2Tests.length,
+        change: period2Tests.length - period1Tests.length,
+        trend: getTrend(period1Tests.length, period2Tests.length),
+      },
+      avgConfidenceLevel: {
+        period1: period1Metrics.avgConfidence,
+        period2: period2Metrics.avgConfidence,
+        change: period2Metrics.avgConfidence - period1Metrics.avgConfidence,
+        trend: getTrend(period1Metrics.avgConfidence, period2Metrics.avgConfidence),
+      },
+      avgEngagementLift: {
+        period1: period1Metrics.avgLift,
+        period2: period2Metrics.avgLift,
+        change: period2Metrics.avgLift - period1Metrics.avgLift,
+        trend: getTrend(period1Metrics.avgLift, period2Metrics.avgLift),
+      },
+      winRate: {
+        period1: period1Metrics.winRate,
+        period2: period2Metrics.winRate,
+        change: period2Metrics.winRate - period1Metrics.winRate,
+        trend: getTrend(period1Metrics.winRate, period2Metrics.winRate),
+      },
+    },
+    platformComparison,
+    insights,
+    recommendations,
+  };
+}

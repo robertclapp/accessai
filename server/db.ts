@@ -27,7 +27,8 @@ import {
   abTestVariants, InsertABTestVariant, ABTestVariant,
   cwPresets, InsertCWPreset, CWPreset,
   mastodonTemplates, InsertMastodonTemplate, MastodonTemplate,
-  digestDeliveryTracking, InsertDigestDeliveryTracking, DigestDeliveryTracking
+  digestDeliveryTracking, InsertDigestDeliveryTracking, DigestDeliveryTracking,
+  templateCategories, InsertTemplateCategory, TemplateCategory
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -2826,4 +2827,221 @@ export async function getDigestDeliveries(
     .orderBy(desc(digestDeliveryTracking.sentAt))
     .limit(limit)
     .offset(offset);
+}
+
+
+// ============================================
+// TEMPLATE CATEGORIES OPERATIONS
+// ============================================
+
+/**
+ * Get all template categories for a user
+ */
+export async function getUserTemplateCategories(userId: number): Promise<TemplateCategory[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(templateCategories)
+    .where(eq(templateCategories.userId, userId))
+    .orderBy(asc(templateCategories.sortOrder), asc(templateCategories.name));
+}
+
+/**
+ * Get a single template category by ID
+ */
+export async function getTemplateCategory(id: number, userId: number): Promise<TemplateCategory | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const results = await db
+    .select()
+    .from(templateCategories)
+    .where(and(
+      eq(templateCategories.id, id),
+      eq(templateCategories.userId, userId)
+    ))
+    .limit(1);
+  
+  return results[0] || null;
+}
+
+/**
+ * Create a new template category
+ */
+export async function createTemplateCategory(
+  data: Omit<InsertTemplateCategory, "id" | "createdAt" | "updatedAt">
+): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(templateCategories).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Update a template category
+ */
+export async function updateTemplateCategory(
+  id: number,
+  userId: number,
+  data: Partial<Omit<InsertTemplateCategory, "id" | "userId" | "createdAt" | "updatedAt">>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db
+    .update(templateCategories)
+    .set(data)
+    .where(and(
+      eq(templateCategories.id, id),
+      eq(templateCategories.userId, userId)
+    ));
+}
+
+/**
+ * Delete a template category
+ */
+export async function deleteTemplateCategory(id: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db
+    .delete(templateCategories)
+    .where(and(
+      eq(templateCategories.id, id),
+      eq(templateCategories.userId, userId)
+    ));
+}
+
+/**
+ * Update template count for a category
+ */
+export async function updateCategoryTemplateCount(categoryId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  // Count templates with this category name
+  const category = await getTemplateCategory(categoryId, userId);
+  if (!category) return;
+  
+  const templates = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(mastodonTemplates)
+    .where(and(
+      eq(mastodonTemplates.userId, userId),
+      sql`${mastodonTemplates.category} = ${category.name}`
+    ));
+  
+  const count = templates[0]?.count || 0;
+  
+  await db
+    .update(templateCategories)
+    .set({ templateCount: count })
+    .where(eq(templateCategories.id, categoryId));
+}
+
+// ============================================
+// DIGEST PAUSE/RESUME OPERATIONS
+// ============================================
+
+/**
+ * Pause digest emails for a user
+ */
+export async function pauseDigestEmails(
+  userId: number,
+  reason?: string,
+  pauseUntil?: Date
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db
+    .update(emailDigestPreferences)
+    .set({
+      isPaused: true,
+      pausedAt: new Date(),
+      pauseReason: reason || null,
+      pauseUntil: pauseUntil || null,
+    })
+    .where(eq(emailDigestPreferences.userId, userId));
+}
+
+/**
+ * Resume digest emails for a user
+ */
+export async function resumeDigestEmails(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db
+    .update(emailDigestPreferences)
+    .set({
+      isPaused: false,
+      pausedAt: null,
+      pauseReason: null,
+      pauseUntil: null,
+    })
+    .where(eq(emailDigestPreferences.userId, userId));
+}
+
+/**
+ * Check if digest is paused and auto-resume if pause period has expired
+ */
+export async function checkAndAutoResumeDigest(userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const results = await db
+    .select()
+    .from(emailDigestPreferences)
+    .where(eq(emailDigestPreferences.userId, userId))
+    .limit(1);
+  
+  const prefs = results[0];
+  if (!prefs || !prefs.isPaused) return false;
+  
+  // Check if pause period has expired
+  if (prefs.pauseUntil && new Date(prefs.pauseUntil) <= new Date()) {
+    await resumeDigestEmails(userId);
+    return true; // Was paused, now resumed
+  }
+  
+  return false; // Still paused
+}
+
+/**
+ * Get digest pause status
+ */
+export async function getDigestPauseStatus(userId: number): Promise<{
+  isPaused: boolean;
+  pausedAt: Date | null;
+  pauseReason: string | null;
+  pauseUntil: Date | null;
+}> {
+  const db = await getDb();
+  if (!db) {
+    return {
+      isPaused: false,
+      pausedAt: null,
+      pauseReason: null,
+      pauseUntil: null,
+    };
+  }
+  
+  const results = await db
+    .select()
+    .from(emailDigestPreferences)
+    .where(eq(emailDigestPreferences.userId, userId))
+    .limit(1);
+  
+  const prefs = results[0];
+  
+  return {
+    isPaused: prefs?.isPaused ?? false,
+    pausedAt: prefs?.pausedAt ?? null,
+    pauseReason: prefs?.pauseReason ?? null,
+    pauseUntil: prefs?.pauseUntil ?? null,
+  };
 }

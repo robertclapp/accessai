@@ -141,6 +141,13 @@
       "when": 1765378354261,
       "tag": "0019_curly_sprite",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "5",
+      "when": 1765397824939,
+      "tag": "0020_ancient_doomsday",
+      "breakpoints": true
     }
   ]
 }

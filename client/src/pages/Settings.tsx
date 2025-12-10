@@ -40,7 +40,10 @@ import {
   Download,
   Mail,
   Send,
-  Eye
+  Eye,
+  Pause,
+  Play,
+  Calendar
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -258,6 +261,153 @@ function ScheduledDigestPreview() {
             />
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+/** Digest Pause/Resume Control Component */
+function DigestPauseControl() {
+  const [pauseReason, setPauseReason] = useState("");
+  const [pauseUntil, setPauseUntil] = useState("");
+  const [showPauseForm, setShowPauseForm] = useState(false);
+  
+  const { data: pauseStatus, isLoading, refetch } = trpc.settings.getDigestPauseStatus.useQuery();
+  const utils = trpc.useUtils();
+  
+  const pauseMutation = trpc.settings.pauseDigest.useMutation({
+    onSuccess: () => {
+      toast.success("Digest emails paused");
+      refetch();
+      utils.settings.getScheduledDigestPreview.invalidate();
+      setShowPauseForm(false);
+      setPauseReason("");
+      setPauseUntil("");
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const resumeMutation = trpc.settings.resumeDigest.useMutation({
+    onSuccess: () => {
+      toast.success("Digest emails resumed");
+      refetch();
+      utils.settings.getScheduledDigestPreview.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-4">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  
+  const isPaused = pauseStatus?.isPaused ?? false;
+  const pausedAt = pauseStatus?.pausedAt ? new Date(pauseStatus.pausedAt) : null;
+  const pauseUntilDate = pauseStatus?.pauseUntil ? new Date(pauseStatus.pauseUntil) : null;
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium">Pause Digest Emails</h3>
+        {isPaused ? (
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => resumeMutation.mutate()}
+            disabled={resumeMutation.isPending}
+          >
+            {resumeMutation.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 mr-2" />
+            )}
+            Resume Digests
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowPauseForm(!showPauseForm)}
+          >
+            <Pause className="h-4 w-4 mr-2" />
+            Pause Digests
+          </Button>
+        )}
+      </div>
+      
+      {isPaused && (
+        <Alert className="border-amber-500 bg-amber-50 dark:bg-amber-950/20">
+          <Pause className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-amber-800 dark:text-amber-400">Digest emails are paused</AlertTitle>
+          <AlertDescription className="text-amber-700 dark:text-amber-500">
+            <div className="space-y-1 text-sm">
+              {pausedAt && (
+                <p>Paused on: {pausedAt.toLocaleDateString(undefined, { dateStyle: "medium" })}</p>
+              )}
+              {pauseStatus?.pauseReason && (
+                <p>Reason: {pauseStatus.pauseReason}</p>
+              )}
+              {pauseUntilDate && (
+                <p>Auto-resume: {pauseUntilDate.toLocaleDateString(undefined, { dateStyle: "medium" })}</p>
+              )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {showPauseForm && !isPaused && (
+        <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="pause-reason">Reason (optional)</Label>
+            <Input
+              id="pause-reason"
+              placeholder="e.g., On vacation, Taking a break"
+              value={pauseReason}
+              onChange={(e) => setPauseReason(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="pause-until">Auto-resume date (optional)</Label>
+            <Input
+              id="pause-until"
+              type="date"
+              value={pauseUntil}
+              onChange={(e) => setPauseUntil(e.target.value)}
+              min={new Date().toISOString().split("T")[0]}
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave empty to pause indefinitely until you manually resume
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => pauseMutation.mutate({
+                reason: pauseReason || undefined,
+                pauseUntil: pauseUntil ? new Date(pauseUntil).toISOString() : undefined,
+              })}
+              disabled={pauseMutation.isPending}
+            >
+              {pauseMutation.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Pause className="h-4 w-4 mr-2" />
+              )}
+              Confirm Pause
+            </Button>
+            <Button variant="ghost" onClick={() => setShowPauseForm(false)}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+      
+      {!isPaused && !showPauseForm && (
+        <p className="text-sm text-muted-foreground">
+          Temporarily pause digest emails without losing your preferences. Perfect for vacations or breaks.
+        </p>
       )}
     </div>
   );
@@ -717,6 +867,11 @@ function EmailDigestsTab() {
             
             {/* Scheduled Digest Preview */}
             <ScheduledDigestPreview />
+            
+            <Separator />
+            
+            {/* Pause/Resume Control */}
+            <DigestPauseControl />
             
             <Separator />
             
