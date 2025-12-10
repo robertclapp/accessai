@@ -513,3 +513,23 @@
 - [x] Display top performing content characteristics
 - [x] Add insights summary to A/B Testing page
 - [x] Write tests for history insights (339 tests passing)
+
+## Template Duplication (New)
+- [x] Add duplicate endpoint to mastodonTemplates router
+- [x] Add duplicate button to template list UI
+- [x] Show confirmation with editable name for duplicated template
+- [x] Write tests for template duplication (366 tests passing)
+
+## Digest Scheduling Preview (New)
+- [x] Create digest preview endpoint
+- [x] Build preview component showing next scheduled digest
+- [x] Display preview in Settings Email Digests tab
+- [x] Show scheduled time and content preview
+- [x] Write tests for digest preview (366 tests passing)
+
+## Export Insights as PDF (New)
+- [x] Create PDF generation endpoint for insights
+- [x] Build PDF layout with charts and recommendations
+- [x] Add export button to History Insights dialog
+- [x] Handle PDF download in browser
+- [x] Write tests for PDF export (366 tests passing)

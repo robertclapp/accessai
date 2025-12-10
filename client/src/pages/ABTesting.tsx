@@ -40,7 +40,9 @@ import {
   History,
   Target,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Download,
+  FileText
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -1253,10 +1255,51 @@ function HistoryInsightsDialog({
   open: boolean; 
   onOpenChange: (open: boolean) => void;
 }) {
+  const [isExporting, setIsExporting] = useState(false);
+  
   const { data: insights, isLoading, refetch } = trpc.abTesting.getHistoryInsights.useQuery(
     undefined,
     { enabled: open }
   );
+  
+  const { data: pdfData, refetch: fetchPdf } = trpc.abTesting.exportHistoryInsightsPdf.useQuery(
+    undefined,
+    { enabled: false }
+  );
+  
+  const handleExportPdf = async () => {
+    setIsExporting(true);
+    try {
+      const result = await fetchPdf();
+      if (result.data?.html) {
+        // Create a new window with the HTML content for printing
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(result.data.html);
+          printWindow.document.close();
+          
+          // Wait for content to load then trigger print
+          printWindow.onload = () => {
+            printWindow.print();
+          };
+          
+          toast.success("PDF export ready", { 
+            description: "Use your browser's print dialog to save as PDF" 
+          });
+        } else {
+          toast.error("Popup blocked", { 
+            description: "Please allow popups to export the PDF" 
+          });
+        }
+      }
+    } catch (error) {
+      toast.error("Export failed", { 
+        description: "Could not generate the PDF report" 
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
   
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1492,7 +1535,19 @@ function HistoryInsightsDialog({
           </div>
         )}
         
-        <DialogFooter>
+        <DialogFooter className="flex-col sm:flex-row gap-2">
+          <Button 
+            variant="outline" 
+            onClick={handleExportPdf}
+            disabled={isExporting || !insights || insights.summary.completedTests === 0}
+          >
+            {isExporting ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4 mr-2" />
+            )}
+            Export as PDF
+          </Button>
           <Button variant="outline" onClick={() => refetch()}>
             <Sparkles className="w-4 h-4 mr-2" />
             Refresh Insights

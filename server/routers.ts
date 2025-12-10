@@ -26,6 +26,7 @@ import {
   generateDigestContent,
   formatDigestEmail,
   formatDigestHtml,
+  generateDigestPreview,
 } from "./services/emailDigest";
 import {
   generateTestInsights,
@@ -33,6 +34,7 @@ import {
   generateCrossTestInsights,
   generateTestHistoryInsights,
 } from "./services/abTestInsights";
+import { generateInsightsPdfHtml } from "./services/insightsPdfExport";
 
 // ============================================
 // VALIDATION SCHEMAS
@@ -1490,6 +1492,12 @@ ${aiContext}`
       .query(async ({ ctx, input }) => {
         return await db.getDigestDeliveries(ctx.user.id, input.limit, input.offset);
       }),
+    
+    /** Get scheduled digest preview with next send date */
+    getScheduledDigestPreview: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await generateDigestPreview(ctx.user.id);
+      }),
   }),
 
   // ============================================
@@ -2426,6 +2434,24 @@ ${aiContext}`
       .query(async ({ ctx }) => {
         return await generateTestHistoryInsights(ctx.user.id);
       }),
+    
+    /** Export history insights as PDF-ready HTML */
+    exportHistoryInsightsPdf: protectedProcedure
+      .input(z.object({
+        includeRecommendations: z.boolean().optional().default(true),
+        includePlatformBreakdown: z.boolean().optional().default(true),
+        includeContentLearnings: z.boolean().optional().default(true),
+        includeTimeAnalysis: z.boolean().optional().default(true),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        const { html, insights } = await generateInsightsPdfHtml(ctx.user.id, input || {});
+        return {
+          html,
+          generatedAt: insights.generatedAt,
+          totalTests: insights.summary.totalTests,
+          completedTests: insights.summary.completedTests,
+        };
+      }),
   }),
 
   // ============================================
@@ -2589,6 +2615,36 @@ ${aiContext}`
           isPublic: input.isPublic,
         });
         return { id };
+      }),
+    
+    /** Duplicate an existing template */
+    duplicate: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        newName: z.string().min(1).max(255).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Get the original template
+        const original = await db.getMastodonTemplate(input.id, ctx.user.id);
+        if (!original) {
+          throw new Error("Template not found");
+        }
+        
+        // Create a copy with a new name
+        const newName = input.newName || `${original.name} (Copy)`;
+        const id = await db.createMastodonTemplate({
+          name: newName,
+          description: original.description,
+          category: original.category,
+          content: original.content,
+          defaultCW: original.defaultCW,
+          cwPresetId: original.cwPresetId,
+          defaultVisibility: original.defaultVisibility,
+          userId: ctx.user.id,
+          isPublic: false, // Duplicated templates are private by default
+        });
+        
+        return { id, name: newName };
       }),
   }),
 });

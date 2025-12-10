@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, Edit2, Trash2, Eye, Search, FileText, AlertTriangle } from "lucide-react";
+import { Plus, Edit2, Trash2, Eye, Search, FileText, AlertTriangle, Copy } from "lucide-react";
 
 const CATEGORIES = [
   { value: "news", label: "News", color: "bg-blue-500" },
@@ -80,6 +80,20 @@ export default function MastodonTemplates() {
       toast.error("Error", { description: error.message });
     },
   });
+
+  const duplicateMutation = trpc.mastodonTemplates.duplicate.useMutation({
+    onSuccess: (result) => {
+      toast.success("Template duplicated", { description: `Created "${result.name}"` });
+      refetch();
+    },
+    onError: (error) => {
+      toast.error("Error", { description: error.message });
+    },
+  });
+
+  const handleDuplicate = (id: number, name: string) => {
+    duplicateMutation.mutate({ id, newName: `${name} (Copy)` });
+  };
 
   const handleCreate = () => {
     createMutation.mutate({
@@ -331,14 +345,25 @@ export default function MastodonTemplates() {
                             setSelectedTemplate(template);
                             setIsEditOpen(true);
                           }}
+                          title="Edit template"
                         >
                           <Edit2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDuplicate(template.id, template.name)}
+                          disabled={duplicateMutation.isPending}
+                          title="Duplicate template"
+                        >
+                          <Copy className="h-4 w-4" />
                         </Button>
                         {!template.isSystem && (
                           <Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(template.id)}
+                            title="Delete template"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>

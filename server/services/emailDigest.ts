@@ -815,3 +815,117 @@ export async function processScheduledDigests(): Promise<{ sent: number; failed:
 
   return { sent, failed };
 }
+
+
+// ============================================
+// DIGEST PREVIEW
+// ============================================
+
+export interface DigestPreview {
+  nextScheduledAt: Date | null;
+  frequency: "weekly" | "monthly";
+  dayOfWeek: number;
+  dayOfMonth: number;
+  enabled: boolean;
+  previewHtml: string | null;
+  previewContent: DigestContent | null;
+  includedSections: {
+    analytics: boolean;
+    goalProgress: boolean;
+    topPosts: boolean;
+    platformComparison: boolean;
+    scheduledPosts: boolean;
+  };
+}
+
+/**
+ * Calculate the next scheduled digest date
+ */
+function calculateNextDigestDate(
+  frequency: "weekly" | "monthly",
+  dayOfWeek: number,
+  dayOfMonth: number
+): Date {
+  const now = new Date();
+  const next = new Date(now);
+  
+  if (frequency === "weekly") {
+    // Find next occurrence of the specified day of week
+    const currentDay = now.getDay();
+    let daysUntil = dayOfWeek - currentDay;
+    if (daysUntil <= 0) {
+      daysUntil += 7; // Next week
+    }
+    next.setDate(next.getDate() + daysUntil);
+  } else {
+    // Monthly: find next occurrence of the specified day of month
+    next.setDate(dayOfMonth);
+    if (next <= now) {
+      next.setMonth(next.getMonth() + 1);
+    }
+    // Handle months with fewer days
+    while (next.getDate() !== dayOfMonth && dayOfMonth <= 28) {
+      next.setDate(dayOfMonth);
+    }
+  }
+  
+  // Set to 9 AM
+  next.setHours(9, 0, 0, 0);
+  
+  return next;
+}
+
+/**
+ * Generate a preview of the next scheduled digest
+ */
+export async function generateDigestPreview(userId: number): Promise<DigestPreview | null> {
+  const prefs = await getDigestPreferences(userId);
+  
+  if (!prefs) {
+    return {
+      nextScheduledAt: null,
+      frequency: "weekly",
+      dayOfWeek: 1,
+      dayOfMonth: 1,
+      enabled: false,
+      previewHtml: null,
+      previewContent: null,
+      includedSections: {
+        analytics: true,
+        goalProgress: true,
+        topPosts: true,
+        platformComparison: true,
+        scheduledPosts: true,
+      },
+    };
+  }
+  
+  const frequency = prefs.frequency ?? "weekly";
+  const dayOfWeek = prefs.dayOfWeek ?? 1;
+  const dayOfMonth = prefs.dayOfMonth ?? 1;
+  
+  const nextScheduledAt = prefs.enabled 
+    ? calculateNextDigestDate(frequency, dayOfWeek, dayOfMonth)
+    : null;
+  
+  // Generate preview content
+  const previewContent = await generateDigestContent(userId, frequency);
+  const previewHtml = previewContent ? formatDigestHtml(previewContent) : null;
+  
+  return {
+    nextScheduledAt,
+    frequency,
+    dayOfWeek,
+    dayOfMonth,
+    enabled: prefs.enabled ?? false,
+    previewHtml,
+    previewContent,
+    includedSections: {
+      analytics: prefs.includeAnalytics ?? true,
+      goalProgress: prefs.includeGoalProgress ?? true,
+      topPosts: prefs.includeTopPosts ?? true,
+      platformComparison: prefs.includePlatformComparison ?? true,
+      scheduledPosts: prefs.includeScheduledPosts ?? true,
+    },
+  };
+}

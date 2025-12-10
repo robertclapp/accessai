@@ -156,6 +156,113 @@ function DigestDeliveryStats() {
   );
 }
 
+/** Scheduled Digest Preview Component */
+function ScheduledDigestPreview() {
+  const [showPreview, setShowPreview] = useState(false);
+  const { data: preview, isLoading } = trpc.settings.getScheduledDigestPreview.useQuery();
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-4">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  
+  if (!preview || !preview.enabled) {
+    return null;
+  }
+  
+  const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const nextSendDate = preview.nextScheduledAt ? new Date(preview.nextScheduledAt) : null;
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-medium">Next Scheduled Digest</h3>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowPreview(!showPreview)}
+        >
+          <Eye className="h-4 w-4 mr-2" />
+          {showPreview ? "Hide Preview" : "Show Preview"}
+        </Button>
+      </div>
+      
+      <div className="bg-muted/50 rounded-lg p-4">
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <span className="text-muted-foreground">Frequency:</span>
+            <span className="ml-2 font-medium capitalize">{preview.frequency}</span>
+          </div>
+          <div>
+            <span className="text-muted-foreground">Schedule:</span>
+            <span className="ml-2 font-medium">
+              {preview.frequency === "weekly" 
+                ? `Every ${dayNames[preview.dayOfWeek]}` 
+                : `Day ${preview.dayOfMonth} of each month`
+              }
+            </span>
+          </div>
+          {nextSendDate && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground">Next send:</span>
+              <span className="ml-2 font-medium">
+                {nextSendDate.toLocaleDateString(undefined, {
+                  weekday: "long",
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit"
+                })}
+              </span>
+            </div>
+          )}
+        </div>
+        
+        <div className="mt-3 pt-3 border-t border-border">
+          <span className="text-sm text-muted-foreground">Included sections: </span>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {preview.includedSections.analytics && (
+              <Badge variant="secondary" className="text-xs">Analytics</Badge>
+            )}
+            {preview.includedSections.goalProgress && (
+              <Badge variant="secondary" className="text-xs">Goal Progress</Badge>
+            )}
+            {preview.includedSections.topPosts && (
+              <Badge variant="secondary" className="text-xs">Top Posts</Badge>
+            )}
+            {preview.includedSections.platformComparison && (
+              <Badge variant="secondary" className="text-xs">Platform Comparison</Badge>
+            )}
+            {preview.includedSections.scheduledPosts && (
+              <Badge variant="secondary" className="text-xs">Scheduled Posts</Badge>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {showPreview && preview.previewHtml && (
+        <div className="border rounded-lg overflow-hidden">
+          <div className="bg-muted px-4 py-2 border-b">
+            <span className="text-sm font-medium">Email Preview</span>
+          </div>
+          <div className="bg-white">
+            <iframe
+              srcDoc={preview.previewHtml}
+              className="w-full h-[500px] border-0"
+              title="Digest Preview"
+              sandbox="allow-same-origin"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Email Digests Tab Component */
 function EmailDigestsTab() {
   const [digestEnabled, setDigestEnabled] = useState(false);
@@ -605,6 +712,11 @@ function EmailDigestsTab() {
                 Send Test Digest
               </Button>
             </div>
+            
+            <Separator />
+            
+            {/* Scheduled Digest Preview */}
+            <ScheduledDigestPreview />
             
             <Separator />
             
