@@ -1,0 +1,1 @@
+ALTER TABLE `email_digest_preferences` ADD `pauseReminderSentAt` timestamp;

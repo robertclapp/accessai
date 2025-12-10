@@ -148,6 +148,13 @@
       "when": 1765397824939,
       "tag": "0020_ancient_doomsday",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "5",
+      "when": 1765407954794,
+      "tag": "0021_normal_wildside",
+      "breakpoints": true
     }
   ]
 }

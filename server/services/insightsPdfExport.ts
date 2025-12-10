@@ -472,3 +472,371 @@ export async function generateInsightsPdfHtml(
   
   return { html, insights };
 }
+
+
+// ============================================
+// TIME PERIOD COMPARISON PDF EXPORT
+// ============================================
+
+export interface TimePeriodComparisonData {
+  period1: {
+    start: Date;
+    end: Date;
+    totalTests: number;
+    completedTests: number;
+    avgWinRate: number;
+    avgEngagementLift: number;
+  };
+  period2: {
+    start: Date;
+    end: Date;
+    totalTests: number;
+    completedTests: number;
+    avgWinRate: number;
+    avgEngagementLift: number;
+  };
+  comparison: {
+    testsChange: number;
+    winRateChange: number;
+    engagementLiftChange: number;
+    trend: "improving" | "declining" | "stable";
+  };
+  insights: string[];
+}
+
+/**
+ * Generate HTML for time period comparison PDF
+ */
+export function generateComparisonHtml(data: TimePeriodComparisonData): string {
+  const formatDate = (date: Date) => date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+  
+  const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
+  const formatChange = (value: number) => {
+    const sign = value >= 0 ? "+" : "";
+    return `${sign}${(value * 100).toFixed(1)}%`;
+  };
+  
+  const getTrendEmoji = (trend: string) => {
+    switch (trend) {
+      case "improving": return "📈";
+      case "declining": return "📉";
+      default: return "➡️";
+    }
+  };
+  
+  const getTrendColor = (trend: string) => {
+    switch (trend) {
+      case "improving": return "#22c55e";
+      case "declining": return "#ef4444";
+      default: return "#6b7280";
+    }
+  };
+
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A/B Test Period Comparison Report - AccessAI</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #1f2937;
+      background: #ffffff;
+      padding: 40px;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 2px solid #e5e7eb;
+    }
+    
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 8px;
+    }
+    
+    .header .subtitle {
+      font-size: 14px;
+      color: #6b7280;
+    }
+    
+    .trend-badge {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 16px;
+      margin-top: 16px;
+    }
+    
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 100px 1fr;
+      gap: 20px;
+      margin-bottom: 40px;
+    }
+    
+    .period-card {
+      background: #f9fafb;
+      border-radius: 12px;
+      padding: 24px;
+    }
+    
+    .period-card h3 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 8px;
+    }
+    
+    .period-card .date-range {
+      font-size: 13px;
+      color: #6b7280;
+      margin-bottom: 16px;
+    }
+    
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .metric-row:last-child {
+      border-bottom: none;
+    }
+    
+    .metric-label {
+      color: #6b7280;
+      font-size: 13px;
+    }
+    
+    .metric-value {
+      font-weight: 600;
+      color: #111827;
+    }
+    
+    .vs-column {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: 700;
+      color: #9ca3af;
+    }
+    
+    .changes-section {
+      background: #f0f9ff;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 40px;
+    }
+    
+    .changes-section h3 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1e40af;
+      margin-bottom: 16px;
+    }
+    
+    .change-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+    
+    .change-item {
+      text-align: center;
+      padding: 16px;
+      background: white;
+      border-radius: 8px;
+    }
+    
+    .change-value {
+      font-size: 24px;
+      font-weight: 700;
+    }
+    
+    .change-value.positive {
+      color: #22c55e;
+    }
+    
+    .change-value.negative {
+      color: #ef4444;
+    }
+    
+    .change-value.neutral {
+      color: #6b7280;
+    }
+    
+    .change-label {
+      font-size: 12px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+    
+    .insights-section {
+      margin-bottom: 40px;
+    }
+    
+    .insights-section h3 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #111827;
+      margin-bottom: 16px;
+    }
+    
+    .insight-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px 16px;
+      background: #fefce8;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    
+    .insight-icon {
+      font-size: 18px;
+    }
+    
+    .insight-text {
+      flex: 1;
+      color: #713f12;
+    }
+    
+    .footer {
+      text-align: center;
+      padding-top: 20px;
+      border-top: 1px solid #e5e7eb;
+      color: #9ca3af;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>A/B Test Period Comparison</h1>
+    <p class="subtitle">Generated on ${new Date().toLocaleDateString()}</p>
+    <div class="trend-badge" style="background: ${getTrendColor(data.comparison.trend)}20; color: ${getTrendColor(data.comparison.trend)};">
+      ${getTrendEmoji(data.comparison.trend)} Overall Trend: ${data.comparison.trend.charAt(0).toUpperCase() + data.comparison.trend.slice(1)}
+    </div>
+  </div>
+  
+  <div class="comparison-grid">
+    <div class="period-card">
+      <h3>Period 1</h3>
+      <p class="date-range">${formatDate(data.period1.start)} - ${formatDate(data.period1.end)}</p>
+      <div class="metric-row">
+        <span class="metric-label">Total Tests</span>
+        <span class="metric-value">${data.period1.totalTests}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Completed Tests</span>
+        <span class="metric-value">${data.period1.completedTests}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Avg Win Rate</span>
+        <span class="metric-value">${formatPercent(data.period1.avgWinRate)}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Avg Engagement Lift</span>
+        <span class="metric-value">${formatPercent(data.period1.avgEngagementLift)}</span>
+      </div>
+    </div>
+    
+    <div class="vs-column">VS</div>
+    
+    <div class="period-card">
+      <h3>Period 2</h3>
+      <p class="date-range">${formatDate(data.period2.start)} - ${formatDate(data.period2.end)}</p>
+      <div class="metric-row">
+        <span class="metric-label">Total Tests</span>
+        <span class="metric-value">${data.period2.totalTests}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Completed Tests</span>
+        <span class="metric-value">${data.period2.completedTests}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Avg Win Rate</span>
+        <span class="metric-value">${formatPercent(data.period2.avgWinRate)}</span>
+      </div>
+      <div class="metric-row">
+        <span class="metric-label">Avg Engagement Lift</span>
+        <span class="metric-value">${formatPercent(data.period2.avgEngagementLift)}</span>
+      </div>
+    </div>
+  </div>
+  
+  <div class="changes-section">
+    <h3>📊 Period-over-Period Changes</h3>
+    <div class="change-grid">
+      <div class="change-item">
+        <div class="change-value ${data.comparison.testsChange >= 0 ? 'positive' : 'negative'}">
+          ${formatChange(data.comparison.testsChange)}
+        </div>
+        <div class="change-label">Tests Conducted</div>
+      </div>
+      <div class="change-item">
+        <div class="change-value ${data.comparison.winRateChange >= 0 ? 'positive' : 'negative'}">
+          ${formatChange(data.comparison.winRateChange)}
+        </div>
+        <div class="change-label">Win Rate</div>
+      </div>
+      <div class="change-item">
+        <div class="change-value ${data.comparison.engagementLiftChange >= 0 ? 'positive' : 'negative'}">
+          ${formatChange(data.comparison.engagementLiftChange)}
+        </div>
+        <div class="change-label">Engagement Lift</div>
+      </div>
+    </div>
+  </div>
+  
+  ${data.insights.length > 0 ? `
+  <div class="insights-section">
+    <h3>💡 Key Insights</h3>
+    ${data.insights.map(insight => `
+      <div class="insight-item">
+        <span class="insight-icon">💡</span>
+        <span class="insight-text">${insight}</span>
+      </div>
+    `).join('')}
+  </div>
+  ` : ''}
+  
+  <div class="footer">
+    <p>Generated by AccessAI • ${new Date().toISOString()}</p>
+  </div>
+</body>
+</html>
+  `.trim();
+
+  return html;
+}
+
+/**
+ * Export time period comparison as HTML (for PDF conversion)
+ */
+export async function exportComparisonAsPdf(
+  data: TimePeriodComparisonData
+): Promise<string> {
+  return generateComparisonHtml(data);
+}

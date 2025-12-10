@@ -678,6 +678,9 @@ export const emailDigestPreferences = mysqlTable("email_digest_preferences", {
   pauseReason: varchar("pauseReason", { length: 255 }),
   pauseUntil: timestamp("pauseUntil"), // Optional auto-resume date
   
+  /** When the last pause reminder was sent */
+  pauseReminderSentAt: timestamp("pauseReminderSentAt"),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

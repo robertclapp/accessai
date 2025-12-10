@@ -558,3 +558,25 @@
 - [x] Display trend indicators (improving/declining)
 - [x] Generate period-specific insights
 - [x] Write tests for time comparison (395 tests passing)
+
+## Category Drag-and-Drop Reordering (New)
+- [x] Add sortOrder field to template_categories table (already exists)
+- [x] Create reorder endpoint in router
+- [x] Install dnd-kit library for drag-and-drop
+- [x] Build drag-and-drop UI for categories
+- [x] Persist order changes to database
+- [x] Write tests for category reordering (422 tests passing)
+
+## Digest Pause Reminder Notification (New)
+- [x] Create reminder check function
+- [x] Send reminder email 24 hours before auto-resume
+- [x] Track reminder sent status to avoid duplicates
+- [x] Add reminder email template
+- [x] Write tests for pause reminder (422 tests passing)
+
+## Time Comparison PDF Export (New)
+- [x] Create PDF generation service for time comparison
+- [x] Build PDF layout with comparison metrics
+- [x] Add export button to comparison dialog
+- [x] Handle PDF download in browser
+- [x] Write tests for comparison PDF export (422 tests passing)

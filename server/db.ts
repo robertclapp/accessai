@@ -3045,3 +3045,28 @@ export async function getDigestPauseStatus(userId: number): Promise<{
     pauseUntil: prefs?.pauseUntil ?? null,
   };
 }
+
+
+/**
+ * Reorder template categories
+ */
+export async function reorderTemplateCategories(
+  userId: number,
+  categoryIds: number[]
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  // Update each category with its new sort order
+  for (let i = 0; i < categoryIds.length; i++) {
+    await db
+      .update(templateCategories)
+      .set({ sortOrder: i })
+      .where(
+        and(
+          eq(templateCategories.id, categoryIds[i]),
+          eq(templateCategories.userId, userId)
+        )
+      );
+  }
+}

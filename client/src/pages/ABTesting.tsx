@@ -1873,7 +1873,30 @@ function TimePeriodComparisonDialog({
           </div>
         )}
         
-        <DialogFooter>
+        <DialogFooter className="flex justify-between">
+          <Button
+            variant="outline"
+            onClick={async () => {
+              try {
+                const response = await fetch(`/api/trpc/abTesting.exportComparisonPdf?input=${encodeURIComponent(JSON.stringify({ period1Start, period1End, period2Start, period2End }))}`);
+                const data = await response.json();
+                if (data.result?.data?.html) {
+                  const printWindow = window.open('', '_blank');
+                  if (printWindow) {
+                    printWindow.document.write(data.result.data.html);
+                    printWindow.document.close();
+                    printWindow.print();
+                  }
+                }
+              } catch (error) {
+                console.error('Failed to export PDF:', error);
+              }
+            }}
+            disabled={isLoading || !comparison}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export as PDF
+          </Button>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>

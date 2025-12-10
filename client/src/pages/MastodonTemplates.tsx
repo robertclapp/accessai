@@ -10,7 +10,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Plus, Edit2, Trash2, Eye, Search, FileText, AlertTriangle, Copy, Folder, Settings, Palette } from "lucide-react";
+import { Plus, Edit2, Trash2, Eye, Search, FileText, AlertTriangle, Copy, Folder, Settings, Palette, GripVertical } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const CATEGORIES = [
   { value: "news", label: "News", color: "bg-blue-500" },
@@ -78,6 +95,36 @@ export default function MastodonTemplates() {
     },
     onError: (error) => toast.error(error.message),
   });
+  
+  const reorderCategoryMutation = trpc.templateCategories.reorder.useMutation({
+    onSuccess: () => {
+      toast.success("Categories reordered");
+      refetchCategories();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  // Drag and drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+  
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    
+    if (over && active.id !== over.id && customCategories) {
+      const oldIndex = customCategories.findIndex((cat) => cat.id === active.id);
+      const newIndex = customCategories.findIndex((cat) => cat.id === over.id);
+      
+      const newOrder = arrayMove(customCategories, oldIndex, newIndex);
+      const categoryIds = newOrder.map((cat) => cat.id);
+      
+      reorderCategoryMutation.mutate({ categoryIds });
+    }
+  };
   
   const createMutation = trpc.mastodonTemplates.create.useMutation({
     onSuccess: () => {
@@ -600,75 +647,35 @@ export default function MastodonTemplates() {
 
               {/* Custom categories list */}
               <div className="space-y-2">
-                <h4 className="font-medium">Your Categories</h4>
+                <h4 className="font-medium">Your Categories <span className="text-xs text-muted-foreground font-normal">(drag to reorder)</span></h4>
                 {customCategories?.length === 0 ? (
                   <p className="text-sm text-muted-foreground py-4 text-center">
                     No custom categories yet. Create one above!
                   </p>
                 ) : (
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    {customCategories?.map((cat) => (
-                      <div key={cat.id} className="flex items-center gap-2 p-2 border rounded">
-                        <div
-                          className="w-4 h-4 rounded"
-                          style={{ backgroundColor: cat.color || "#6366f1" }}
-                        />
-                        {editingCategory?.id === cat.id ? (
-                          <>
-                            <Input
-                              value={editingCategory.name}
-                              onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
-                              className="flex-1 h-8"
-                            />
-                            <Input
-                              type="color"
-                              value={editingCategory.color}
-                              onChange={(e) => setEditingCategory({ ...editingCategory, color: e.target.value })}
-                              className="w-8 h-8 p-0.5"
-                            />
-                            <Button
-                              size="sm"
-                              onClick={() => updateCategoryMutation.mutate(editingCategory)}
-                            >
-                              Save
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditingCategory(null)}
-                            >
-                              Cancel
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <span className="flex-1 font-medium">{cat.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {cat.templateCount || 0} templates
-                            </span>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditingCategory({ id: cat.id, name: cat.name, color: cat.color })}
-                            >
-                              <Edit2 className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                if (confirm("Delete this category?")) {
-                                  deleteCategoryMutation.mutate({ id: cat.id });
-                                }
-                              }}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
-                          </>
-                        )}
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                  >
+                    <SortableContext
+                      items={customCategories?.map(cat => cat.id) || []}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {customCategories?.map((cat) => (
+                          <SortableCategoryItem
+                            key={cat.id}
+                            cat={cat}
+                            editingCategory={editingCategory}
+                            setEditingCategory={setEditingCategory}
+                            updateCategoryMutation={updateCategoryMutation}
+                            deleteCategoryMutation={deleteCategoryMutation}
+                          />
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </SortableContext>
+                  </DndContext>
                 )}
               </div>
 
@@ -696,5 +703,109 @@ export default function MastodonTemplates() {
         </Dialog>
       </div>
     </DashboardLayout>
+  );
+}
+
+
+// Sortable category item component for drag and drop
+function SortableCategoryItem({
+  cat,
+  editingCategory,
+  setEditingCategory,
+  updateCategoryMutation,
+  deleteCategoryMutation,
+}: {
+  cat: any;
+  editingCategory: any;
+  setEditingCategory: (cat: any) => void;
+  updateCategoryMutation: any;
+  deleteCategoryMutation: any;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: cat.id });
+  
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 p-2 border rounded bg-background"
+    >
+      <button
+        {...attributes}
+        {...listeners}
+        className="cursor-grab active:cursor-grabbing p-1 hover:bg-muted rounded"
+      >
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </button>
+      <div
+        className="w-4 h-4 rounded flex-shrink-0"
+        style={{ backgroundColor: cat.color || "#6366f1" }}
+      />
+      {editingCategory?.id === cat.id ? (
+        <>
+          <Input
+            value={editingCategory.name}
+            onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+            className="flex-1 h-8"
+          />
+          <Input
+            type="color"
+            value={editingCategory.color}
+            onChange={(e) => setEditingCategory({ ...editingCategory, color: e.target.value })}
+            className="w-8 h-8 p-0.5"
+          />
+          <Button
+            size="sm"
+            onClick={() => updateCategoryMutation.mutate(editingCategory)}
+          >
+            Save
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setEditingCategory(null)}
+          >
+            Cancel
+          </Button>
+        </>
+      ) : (
+        <>
+          <span className="flex-1 font-medium">{cat.name}</span>
+          <span className="text-xs text-muted-foreground">
+            {cat.templateCount || 0} templates
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => setEditingCategory({ id: cat.id, name: cat.name, color: cat.color })}
+          >
+            <Edit2 className="h-3 w-3" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              if (confirm("Delete this category?")) {
+                deleteCategoryMutation.mutate({ id: cat.id });
+              }
+            }}
+          >
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </>
+      )}
+    </div>
   );
 }

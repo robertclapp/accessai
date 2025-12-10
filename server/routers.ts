@@ -35,7 +35,7 @@ import {
   generateTestHistoryInsights,
   compareTimePeriods,
 } from "./services/abTestInsights";
-import { generateInsightsPdfHtml } from "./services/insightsPdfExport";
+import { generateInsightsPdfHtml, generateComparisonHtml, type TimePeriodComparisonData } from "./services/insightsPdfExport";
 
 // ============================================
 // VALIDATION SCHEMAS
@@ -2496,6 +2496,59 @@ ${aiContext}`
           completedTests: insights.summary.completedTests,
         };
       }),
+    
+    /** Export time period comparison as PDF-ready HTML */
+    exportComparisonPdf: protectedProcedure
+      .input(z.object({
+        period1Start: z.string(),
+        period1End: z.string(),
+        period2Start: z.string(),
+        period2End: z.string(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const comparison = await compareTimePeriods(
+          ctx.user.id,
+          new Date(input.period1Start),
+          new Date(input.period1End),
+          new Date(input.period2Start),
+          new Date(input.period2End)
+        );
+        
+        // Calculate overall trend based on win rate change
+        const winRateChange = comparison.comparison.winRate.change;
+        const overallTrend: "improving" | "declining" | "stable" = 
+          winRateChange > 5 ? "improving" : 
+          winRateChange < -5 ? "declining" : "stable";
+        
+        const pdfData: TimePeriodComparisonData = {
+          period1: {
+            start: new Date(input.period1Start),
+            end: new Date(input.period1End),
+            totalTests: comparison.comparison.testsCompleted.period1,
+            completedTests: comparison.comparison.testsCompleted.period1,
+            avgWinRate: comparison.comparison.winRate.period1 / 100,
+            avgEngagementLift: comparison.comparison.avgEngagementLift.period1 / 100,
+          },
+          period2: {
+            start: new Date(input.period2Start),
+            end: new Date(input.period2End),
+            totalTests: comparison.comparison.testsCompleted.period2,
+            completedTests: comparison.comparison.testsCompleted.period2,
+            avgWinRate: comparison.comparison.winRate.period2 / 100,
+            avgEngagementLift: comparison.comparison.avgEngagementLift.period2 / 100,
+          },
+          comparison: {
+            testsChange: comparison.comparison.testsCompleted.change / Math.max(comparison.comparison.testsCompleted.period1, 1),
+            winRateChange: comparison.comparison.winRate.change / 100,
+            engagementLiftChange: comparison.comparison.avgEngagementLift.change / 100,
+            trend: overallTrend,
+          },
+          insights: comparison.insights.map(i => i.description),
+        };
+        
+        const html = generateComparisonHtml(pdfData);
+        return { html, comparison };
+      }),
   }),
 
   // ============================================
@@ -2739,6 +2792,16 @@ ${aiContext}`
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
         await db.deleteTemplateCategory(input.id, ctx.user.id);
+        return { success: true };
+      }),
+    
+    /** Reorder categories */
+    reorder: protectedProcedure
+      .input(z.object({
+        categoryIds: z.array(z.number()),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.reorderTemplateCategories(ctx.user.id, input.categoryIds);
         return { success: true };
       }),
   }),
