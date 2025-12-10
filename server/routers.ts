@@ -27,6 +27,11 @@ import {
   formatDigestEmail,
   formatDigestHtml,
 } from "./services/emailDigest";
+import {
+  generateTestInsights,
+  getTestInsights,
+  generateCrossTestInsights,
+} from "./services/abTestInsights";
 
 // ============================================
 // VALIDATION SCHEMAS
@@ -2377,6 +2382,27 @@ ${aiContext}`
         
         return { success: true, postId, scheduledAt };
       }),
+    
+    /** Get AI-powered insights for a completed test */
+    getInsights: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await getTestInsights(input.testId, ctx.user.id);
+      }),
+    
+    /** Generate fresh insights for a test */
+    generateInsights: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return await generateTestInsights(input.testId, ctx.user.id);
+      }),
+    
+    /** Get cross-test insights summary */
+    getCrossTestInsights: protectedProcedure
+      .input(z.object({ platform: platformSchema.exclude(["all"]).optional() }))
+      .query(async ({ ctx, input }) => {
+        return await generateCrossTestInsights(ctx.user.id, input.platform);
+      }),
   }),
 
   // ============================================
@@ -2438,6 +2464,108 @@ ${aiContext}`
       .mutation(async ({ input }) => {
         await db.incrementCWPresetUsage(input.presetId);
         return { success: true };
+      }),
+  }),
+
+  // ============================================
+  // MASTODON TEMPLATES ROUTER
+  // ============================================
+  mastodonTemplates: router({
+    /** Get all Mastodon templates for the current user */
+    list: protectedProcedure
+      .query(async ({ ctx }) => {
+        const templates = await db.getMastodonTemplates(ctx.user.id);
+        // If no templates exist, seed defaults
+        if (templates.length === 0) {
+          await db.seedMastodonTemplates();
+          return await db.getMastodonTemplates(ctx.user.id);
+        }
+        return templates;
+      }),
+
+    /** Get a specific Mastodon template */
+    get: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getMastodonTemplate(input.id, ctx.user.id);
+      }),
+
+    /** Create a new Mastodon template */
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        category: z.enum(["news", "opinion", "art", "photography", "tech", "gaming", "food", "politics", "health", "personal", "other"]).optional(),
+        content: z.string().min(1),
+        defaultCW: z.string().max(500).optional(),
+        cwPresetId: z.number().optional(),
+        defaultVisibility: z.enum(["public", "unlisted", "followers_only", "direct"]).optional(),
+        isPublic: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await db.createMastodonTemplate({
+          ...input,
+          userId: ctx.user.id,
+        });
+        return { id };
+      }),
+
+    /** Update a Mastodon template */
+    update: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().min(1).max(255).optional(),
+        description: z.string().optional(),
+        category: z.enum(["news", "opinion", "art", "photography", "tech", "gaming", "food", "politics", "health", "personal", "other"]).optional(),
+        content: z.string().min(1).optional(),
+        defaultCW: z.string().max(500).optional(),
+        cwPresetId: z.number().optional(),
+        defaultVisibility: z.enum(["public", "unlisted", "followers_only", "direct"]).optional(),
+        isPublic: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...data } = input;
+        await db.updateMastodonTemplate(id, ctx.user.id, data);
+        return { success: true };
+      }),
+
+    /** Delete a Mastodon template */
+    delete: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteMastodonTemplate(input.id, ctx.user.id);
+        return { success: true };
+      }),
+
+    /** Use a template (increments usage count) */
+    use: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.incrementMastodonTemplateUsage(input.id);
+        return { success: true };
+      }),
+
+    /** Save current post as a template */
+    saveFromPost: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        category: z.enum(["news", "opinion", "art", "photography", "tech", "gaming", "food", "politics", "health", "personal", "other"]).optional(),
+        content: z.string().min(1),
+        contentWarning: z.string().max(500).optional(),
+        isPublic: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await db.createMastodonTemplate({
+          name: input.name,
+          description: input.description,
+          category: input.category,
+          content: input.content,
+          defaultCW: input.contentWarning,
+          userId: ctx.user.id,
+          isPublic: input.isPublic,
+        });
+        return { id };
       }),
   }),
 });

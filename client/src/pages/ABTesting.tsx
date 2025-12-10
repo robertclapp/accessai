@@ -33,7 +33,10 @@ import {
   Loader2,
   Eye,
   Calendar,
-  Send
+  Send,
+  Lightbulb,
+  Sparkles,
+  TrendingUp
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -704,11 +707,14 @@ export default function ABTesting() {
                               Winner Determined
                             </h3>
                             <p className="text-sm text-muted-foreground">
-                              Schedule the winning variant for reposting to maximize engagement
+                              Schedule the winning content for reposting
                             </p>
                           </div>
                           <Button
                             onClick={() => {
+                              setSelectedTestId(selectedTest.test.id);
+                              setScheduleDate("");
+                              setScheduleTime("09:00");
                               setSchedulePlatform(selectedTest.test.platform as Platform);
                               setIsScheduleOpen(true);
                             }}
@@ -721,6 +727,10 @@ export default function ABTesting() {
                       </CardContent>
                     </Card>
                   )}
+                  
+                  {/* AI Insights Section */}
+                  {selectedTest.test.status === "completed" && selectedTest.test.winningVariantId && (
+                    <ABTestInsightsSection testId={selectedTest.test.id} />)}
                 </CardContent>
               </>
             ) : (
@@ -1018,5 +1028,195 @@ export default function ABTesting() {
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+  );
+}
+
+// ============================================
+// AI INSIGHTS COMPONENT
+// ============================================
+
+function ABTestInsightsSection({ testId }: { testId: number }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  
+  const { data: insights, isLoading, refetch } = trpc.abTesting.getInsights.useQuery(
+    { testId },
+    { enabled: isExpanded }
+  );
+  
+  const generateInsights = trpc.abTesting.generateInsights.useMutation({
+    onSuccess: () => {
+      refetch();
+      toast.success("Insights regenerated!");
+    },
+    onError: (error) => {
+      toast.error(error.message || "Failed to generate insights");
+    },
+  });
+  
+  if (!isExpanded) {
+    return (
+      <Card className="bg-purple-500/10 border-purple-500">
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-medium flex items-center gap-2">
+                <Lightbulb className="w-4 h-4 text-purple-500" />
+                AI-Powered Insights
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Get recommendations to improve future content
+              </p>
+            </div>
+            <Button
+              onClick={() => setIsExpanded(true)}
+              variant="outline"
+              className="border-purple-500 text-purple-500 hover:bg-purple-500 hover:text-white"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              View Insights
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  return (
+    <Card className="border-purple-500">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Lightbulb className="w-5 h-5 text-purple-500" />
+            AI-Powered Insights
+          </CardTitle>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => generateInsights.mutate({ testId })}
+              disabled={generateInsights.isPending}
+            >
+              {generateInsights.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsExpanded(false)}
+            >
+              <XCircle className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-6 h-6 animate-spin text-purple-500" />
+            <span className="ml-2 text-muted-foreground">Analyzing test results...</span>
+          </div>
+        ) : insights ? (
+          <>
+            {/* Insights List */}
+            {insights.insights.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Key Findings
+                </h4>
+                <div className="space-y-2">
+                  {insights.insights.map((insight, idx) => (
+                    <div
+                      key={idx}
+                      className={`p-3 rounded-lg border ${
+                        insight.impact === "high"
+                          ? "bg-green-500/10 border-green-500/30"
+                          : insight.impact === "medium"
+                          ? "bg-yellow-500/10 border-yellow-500/30"
+                          : "bg-muted border-border"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-medium text-sm">{insight.title}</p>
+                          <p className="text-sm text-muted-foreground">{insight.description}</p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ${
+                            insight.impact === "high"
+                              ? "border-green-500 text-green-500"
+                              : insight.impact === "medium"
+                              ? "border-yellow-500 text-yellow-500"
+                              : ""
+                          }`}
+                        >
+                          {insight.impact} impact
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Recommendations */}
+            {insights.recommendations.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-2 flex items-center gap-2">
+                  <Lightbulb className="w-4 h-4" />
+                  Recommendations
+                </h4>
+                <ul className="space-y-2">
+                  {insights.recommendations.map((rec, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-sm">
+                      <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                      <span>{rec}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            {/* Content Patterns */}
+            {insights.contentPatterns.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-2">Content Patterns</h4>
+                <div className="flex flex-wrap gap-2">
+                  {insights.contentPatterns.map((pattern, idx) => (
+                    <Badge
+                      key={idx}
+                      variant="outline"
+                      className={`${
+                        pattern.effect === "positive"
+                          ? "border-green-500 text-green-500"
+                          : pattern.effect === "negative"
+                          ? "border-red-500 text-red-500"
+                          : ""
+                      }`}
+                    >
+                      {pattern.frequency === "winner" && "✓ "}
+                      {pattern.frequency === "loser" && "✗ "}
+                      {pattern.pattern}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <p className="text-xs text-muted-foreground">
+              Generated at {new Date(insights.generatedAt).toLocaleString()}
+            </p>
+          </>
+        ) : (
+          <div className="text-center py-4 text-muted-foreground">
+            <p>No insights available. Click the sparkle button to generate.</p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

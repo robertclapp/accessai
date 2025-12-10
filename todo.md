@@ -446,3 +446,34 @@
 - [x] Open preview in new browser window (700x800)
 - [x] Include all sections (analytics, goals, posts, platforms)
 - [x] Write tests for digest preview (228 tests passing)
+
+
+## Mastodon Post Templates (New)
+- [x] Create mastodon_templates database table
+- [x] Add template categories (general, politics, spoiler, food, etc.)
+- [x] Include content warning preset per template
+- [x] Add hashtag suggestions per template
+- [x] Create CRUD API endpoints for templates
+- [x] Build template selector in PostBuilder for Mastodon
+- [x] Add default templates for common content types
+- [x] Write tests for Mastodon templates (250 tests passing)
+
+## Digest Scheduling Job (New)
+- [x] Create background worker service for digest scheduling
+- [x] Check for due digests based on user preferences
+- [x] Handle weekly digest scheduling (day of week + hour)
+- [x] Handle monthly digest scheduling (day of month + hour)
+- [x] Track last sent timestamp to prevent duplicates
+- [x] Add retry logic for failed sends
+- [x] Create scheduler status endpoint
+- [x] Write tests for digest scheduling (250 tests passing)
+
+## AI A/B Test Insights (New)
+- [x] Create insights generation service using LLM
+- [x] Analyze variant performance differences (emojis, hashtags, CTAs, questions)
+- [x] Generate content recommendations
+- [x] Identify winning patterns (length, tone, hashtags)
+- [x] Suggest improvements for future posts
+- [x] Add insights display to A/B test results
+- [x] Cache insights to avoid repeated API calls
+- [x] Write tests for insights generation (250 tests passing)

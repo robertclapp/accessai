@@ -779,3 +779,47 @@ export const cwPresets = mysqlTable("cw_presets", {
 
 export type CWPreset = typeof cwPresets.$inferSelect;
 export type InsertCWPreset = typeof cwPresets.$inferInsert;
+
+
+/**
+ * Mastodon-specific templates with content warning presets.
+ * Extends the general templates system with Mastodon-specific features.
+ */
+export const mastodonTemplates = mysqlTable("mastodon_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId"), // Null for system templates
+  
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  category: mysqlEnum("category", [
+    "news", "opinion", "art", "photography", "tech", 
+    "gaming", "food", "politics", "health", "personal", "other"
+  ]).default("other"),
+  
+  /** Template content with placeholders */
+  content: text("content").notNull(),
+  
+  /** Default content warning text */
+  defaultCW: varchar("defaultCW", { length: 500 }),
+  
+  /** Linked CW preset ID */
+  cwPresetId: int("cwPresetId"),
+  
+  /** Default visibility for posts using this template */
+  defaultVisibility: mysqlEnum("defaultVisibility", ["public", "unlisted", "followers_only", "direct"]).default("public"),
+  
+  /** Whether this is a system template */
+  isSystem: boolean("isSystem").default(false),
+  
+  /** Whether this template is public */
+  isPublic: boolean("isPublic").default(false),
+  
+  /** Usage tracking */
+  usageCount: int("usageCount").default(0),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type MastodonTemplate = typeof mastodonTemplates.$inferSelect;
+export type InsertMastodonTemplate = typeof mastodonTemplates.$inferInsert;

@@ -25,7 +25,8 @@ import {
   emailDigestPreferences, InsertEmailDigestPreference, EmailDigestPreference,
   abTests, InsertABTest, ABTest,
   abTestVariants, InsertABTestVariant, ABTestVariant,
-  cwPresets, InsertCWPreset, CWPreset
+  cwPresets, InsertCWPreset, CWPreset,
+  mastodonTemplates, InsertMastodonTemplate, MastodonTemplate
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -2431,5 +2432,226 @@ export async function seedDefaultCWPresets(userId: number): Promise<void> {
       isDefault: true,
       usageCount: 0,
     });
+  }
+}
+
+
+
+// ============================================
+// MASTODON TEMPLATES
+// ============================================
+
+/**
+ * Get all Mastodon templates for a user (including system templates)
+ */
+export async function getMastodonTemplates(userId: number): Promise<MastodonTemplate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(mastodonTemplates)
+    .where(or(
+      eq(mastodonTemplates.userId, userId),
+      eq(mastodonTemplates.isSystem, true),
+      eq(mastodonTemplates.isPublic, true)
+    ))
+    .orderBy(desc(mastodonTemplates.usageCount), mastodonTemplates.name);
+}
+
+/**
+ * Get a specific Mastodon template
+ */
+export async function getMastodonTemplate(templateId: number, userId: number): Promise<MastodonTemplate | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db
+    .select()
+    .from(mastodonTemplates)
+    .where(and(
+      eq(mastodonTemplates.id, templateId),
+      or(
+        eq(mastodonTemplates.userId, userId),
+        eq(mastodonTemplates.isSystem, true),
+        eq(mastodonTemplates.isPublic, true)
+      )
+    ))
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+/**
+ * Create a Mastodon template
+ */
+export async function createMastodonTemplate(data: InsertMastodonTemplate): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(mastodonTemplates).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Update a Mastodon template
+ */
+export async function updateMastodonTemplate(
+  templateId: number, 
+  userId: number, 
+  data: Partial<InsertMastodonTemplate>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(mastodonTemplates)
+    .set(data)
+    .where(and(
+      eq(mastodonTemplates.id, templateId),
+      eq(mastodonTemplates.userId, userId)
+    ));
+}
+
+/**
+ * Delete a Mastodon template
+ */
+export async function deleteMastodonTemplate(templateId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .delete(mastodonTemplates)
+    .where(and(
+      eq(mastodonTemplates.id, templateId),
+      eq(mastodonTemplates.userId, userId),
+      eq(mastodonTemplates.isSystem, false) // Can't delete system templates
+    ));
+}
+
+/**
+ * Increment usage count for a Mastodon template
+ */
+export async function incrementMastodonTemplateUsage(templateId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db
+    .update(mastodonTemplates)
+    .set({ usageCount: sql`${mastodonTemplates.usageCount} + 1` })
+    .where(eq(mastodonTemplates.id, templateId));
+}
+
+/**
+ * Seed default Mastodon templates
+ */
+export async function seedMastodonTemplates(): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Check if system templates already exist
+  const existing = await db
+    .select()
+    .from(mastodonTemplates)
+    .where(eq(mastodonTemplates.isSystem, true))
+    .limit(1);
+  
+  if (existing.length > 0) return;
+  
+  const defaults: InsertMastodonTemplate[] = [
+    {
+      name: "News Share",
+      description: "Share news articles with appropriate content warnings",
+      category: "news",
+      content: "📰 {headline}\n\n{summary}\n\n🔗 {link}\n\n#News #{topic}",
+      defaultCW: "News",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Political Commentary",
+      description: "Share political opinions with CW",
+      category: "politics",
+      content: "{opinion}\n\n{context}\n\n#Politics #{topic}",
+      defaultCW: "Politics",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Art Share",
+      description: "Share artwork with optional CW for sensitive content",
+      category: "art",
+      content: "🎨 {title}\n\n{description}\n\n#Art #MastoArt #{medium}",
+      defaultCW: "",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Food Post",
+      description: "Share food content with CW for those who prefer it",
+      category: "food",
+      content: "🍽️ {dish}\n\n{description}\n\n#Food #FoodPorn #{cuisine}",
+      defaultCW: "Food",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Mental Health",
+      description: "Discuss mental health topics with appropriate CW",
+      category: "health",
+      content: "{content}\n\n💙 Remember: You're not alone.\n\n#MentalHealth #{topic}",
+      defaultCW: "Mental Health",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Tech Discussion",
+      description: "Share tech news and opinions",
+      category: "tech",
+      content: "💻 {topic}\n\n{content}\n\n#Tech #{technology}",
+      defaultCW: "",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Gaming Update",
+      description: "Share gaming content with spoiler warnings",
+      category: "gaming",
+      content: "🎮 {game}\n\n{content}\n\n#Gaming #{game}",
+      defaultCW: "Gaming",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Photography",
+      description: "Share photos with optional eye contact CW",
+      category: "photography",
+      content: "📷 {title}\n\n{description}\n\n#Photography #{style}",
+      defaultCW: "",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Personal Update",
+      description: "Share personal life updates",
+      category: "personal",
+      content: "{content}\n\n#{mood}",
+      defaultCW: "",
+      isSystem: true,
+      isPublic: true,
+    },
+    {
+      name: "Opinion Piece",
+      description: "Share strong opinions with CW",
+      category: "opinion",
+      content: "💭 Hot take:\n\n{opinion}\n\n{reasoning}",
+      defaultCW: "Opinion",
+      isSystem: true,
+      isPublic: true,
+    },
+  ];
+  
+  for (const template of defaults) {
+    await db.insert(mastodonTemplates).values(template);
   }
 }
