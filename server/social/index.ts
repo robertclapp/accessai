@@ -15,8 +15,9 @@ import { TwitterAdapter } from "./twitter";
 import { FacebookAdapter } from "./facebook";
 import { InstagramAdapter } from "./instagram";
 import { ThreadsAdapter } from "./threads";
+import { BlueskyAdapter } from "./bluesky";
 
-export type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads";
+export type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "bluesky";
 
 export interface SocialPost {
   content: string;
@@ -83,6 +84,8 @@ export function getAdapter(platform: Platform): SocialAdapter {
       return new InstagramAdapter();
     case "threads":
       return new ThreadsAdapter();
+    case "bluesky":
+      return new BlueskyAdapter();
     default:
       throw new Error(`Unsupported platform: ${platform}`);
   }
@@ -124,7 +127,8 @@ export function formatContentForPlatform(content: string, platform: Platform): s
     twitter: 280,
     facebook: 63206,
     instagram: 2200,
-    threads: 500
+    threads: 500,
+    bluesky: 300
   };
   
   const limit = limits[platform];

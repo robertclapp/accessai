@@ -72,7 +72,7 @@ export const posts = mysqlTable("posts", {
   // Content
   title: varchar("title", { length: 255 }),
   content: text("content").notNull(),
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "all"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "all"]).notNull(),
   
   // Status and scheduling
   status: mysqlEnum("status", ["draft", "scheduled", "published", "failed"]).default("draft").notNull(),
@@ -136,7 +136,7 @@ export const templates = mysqlTable("templates", {
   }>(),
   
   // Platform compatibility
-  platforms: json("platforms").$type<("linkedin" | "twitter" | "facebook" | "instagram" | "threads")[]>(),
+  platforms: json("platforms").$type<("linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "bluesky")[]>(),
   
   // Accessibility
   isAccessible: boolean("isAccessible").default(true),
@@ -256,7 +256,7 @@ export const socialAccounts = mysqlTable("social_accounts", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
   
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"]).notNull(),
   accountId: varchar("accountId", { length: 255 }).notNull(),
   accountName: varchar("accountName", { length: 255 }),
   
@@ -552,7 +552,7 @@ export const platformGoals = mysqlTable("platform_goals", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull(),
   /** Target platform */
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"]).notNull(),
   /** Target engagement rate percentage (e.g., 5.0 = 5%) */
   targetEngagementRate: int("targetEngagementRate").notNull(),
   /** Target number of posts per period */
@@ -612,7 +612,7 @@ export const industryBenchmarks = mysqlTable("industry_benchmarks", {
   /** Industry category */
   industry: varchar("industry", { length: 100 }).notNull(),
   /** Platform for the benchmark */
-  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads"]).notNull(),
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"]).notNull(),
   /** Average engagement rate for this industry/platform */
   avgEngagementRate: int("avgEngagementRate").notNull(),
   /** Median engagement rate */
@@ -635,3 +635,116 @@ export const industryBenchmarks = mysqlTable("industry_benchmarks", {
 
 export type IndustryBenchmark = typeof industryBenchmarks.$inferSelect;
 export type InsertIndustryBenchmark = typeof industryBenchmarks.$inferInsert;
+
+
+/**
+ * Email digest preferences for weekly/monthly analytics reports.
+ */
+export const emailDigestPreferences = mysqlTable("email_digest_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  
+  /** Whether digest emails are enabled */
+  enabled: boolean("enabled").default(true),
+  /** Digest frequency */
+  frequency: mysqlEnum("frequency", ["weekly", "monthly"]).default("weekly"),
+  /** Day of week for weekly digests (0=Sunday, 6=Saturday) */
+  dayOfWeek: int("dayOfWeek").default(1), // Monday
+  /** Day of month for monthly digests (1-28) */
+  dayOfMonth: int("dayOfMonth").default(1),
+  /** Hour to send (0-23 in UTC) */
+  hourUtc: int("hourUtc").default(9), // 9 AM UTC
+  
+  /** Include analytics summary */
+  includeAnalytics: boolean("includeAnalytics").default(true),
+  /** Include goal progress */
+  includeGoalProgress: boolean("includeGoalProgress").default(true),
+  /** Include top performing posts */
+  includeTopPosts: boolean("includeTopPosts").default(true),
+  /** Include platform comparison */
+  includePlatformComparison: boolean("includePlatformComparison").default(true),
+  /** Include upcoming scheduled posts */
+  includeScheduledPosts: boolean("includeScheduledPosts").default(true),
+  
+  /** Last digest sent timestamp */
+  lastSentAt: timestamp("lastSentAt"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type EmailDigestPreference = typeof emailDigestPreferences.$inferSelect;
+export type InsertEmailDigestPreference = typeof emailDigestPreferences.$inferInsert;
+
+
+/**
+ * A/B test experiments for comparing content variants.
+ */
+export const abTests = mysqlTable("ab_tests", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  
+  /** Test name/title */
+  name: varchar("name", { length: 255 }).notNull(),
+  /** Test description */
+  description: text("description"),
+  /** Target platform for the test */
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"]).notNull(),
+  
+  /** Test status */
+  status: mysqlEnum("status", ["draft", "active", "completed", "cancelled"]).default("draft").notNull(),
+  /** Test start date */
+  startedAt: timestamp("startedAt"),
+  /** Test end date */
+  endedAt: timestamp("endedAt"),
+  /** Duration in hours */
+  durationHours: int("durationHours").default(48),
+  
+  /** Winning variant ID (set when test completes) */
+  winningVariantId: int("winningVariantId"),
+  /** Statistical confidence level (0-100) */
+  confidenceLevel: int("confidenceLevel"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ABTest = typeof abTests.$inferSelect;
+export type InsertABTest = typeof abTests.$inferInsert;
+
+/**
+ * Variants within an A/B test.
+ */
+export const abTestVariants = mysqlTable("ab_test_variants", {
+  id: int("id").autoincrement().primaryKey(),
+  testId: int("testId").notNull(),
+  
+  /** Variant label (A, B, C, etc.) */
+  label: varchar("label", { length: 10 }).notNull(),
+  /** Variant content */
+  content: text("content").notNull(),
+  /** Hashtags for this variant */
+  hashtags: json("hashtags").$type<string[]>(),
+  /** Media URLs for this variant */
+  mediaUrls: json("mediaUrls").$type<string[]>(),
+  
+  /** Associated post ID (created when test starts) */
+  postId: int("postId"),
+  
+  /** Analytics for this variant */
+  impressions: int("impressions").default(0),
+  engagements: int("engagements").default(0),
+  clicks: int("clicks").default(0),
+  shares: int("shares").default(0),
+  comments: int("comments").default(0),
+  likes: int("likes").default(0),
+  
+  /** Calculated engagement rate (stored for quick access) */
+  engagementRate: int("engagementRate").default(0), // Stored as basis points (e.g., 250 = 2.50%)
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ABTestVariant = typeof abTestVariants.$inferSelect;
+export type InsertABTestVariant = typeof abTestVariants.$inferInsert;

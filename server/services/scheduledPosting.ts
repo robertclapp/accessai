@@ -38,7 +38,8 @@ export const SCHEDULER_CONFIG = {
     twitter: 500,
     facebook: 1000,
     instagram: 2000,
-    threads: 1000
+    threads: 1000,
+    bluesky: 500
   } as Record<Platform, number>,
   
   /** Grace period for scheduled posts (posts within this window are considered due) */

@@ -21,7 +21,10 @@ import {
   featuredPartners, InsertFeaturedPartner,
   platformGoals, InsertPlatformGoal, PlatformGoal,
   goalHistory, InsertGoalHistory,
-  industryBenchmarks, InsertIndustryBenchmark, IndustryBenchmark
+  industryBenchmarks, InsertIndustryBenchmark, IndustryBenchmark,
+  emailDigestPreferences, InsertEmailDigestPreference, EmailDigestPreference,
+  abTests, InsertABTest, ABTest,
+  abTestVariants, InsertABTestVariant, ABTestVariant
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1866,5 +1869,327 @@ export async function seedIndustryBenchmarks(): Promise<void> {
         benchmarkYear: 2024
       });
     }
+  }
+}
+
+
+// ============================================
+// A/B TESTING FUNCTIONS
+// ============================================
+
+/**
+ * Create a new A/B test
+ */
+export async function createABTest(data: InsertABTest): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(abTests).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Get all A/B tests for a user
+ */
+export async function getUserABTests(userId: number): Promise<ABTest[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(abTests)
+    .where(eq(abTests.userId, userId))
+    .orderBy(desc(abTests.createdAt));
+}
+
+/**
+ * Get a specific A/B test by ID
+ */
+export async function getABTest(testId: number, userId: number): Promise<ABTest | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db
+    .select()
+    .from(abTests)
+    .where(and(eq(abTests.id, testId), eq(abTests.userId, userId)))
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+/**
+ * Get A/B test with variants
+ */
+export async function getABTestWithVariants(testId: number, userId: number): Promise<{
+  test: ABTest;
+  variants: ABTestVariant[];
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const test = await getABTest(testId, userId);
+  if (!test) return null;
+  
+  const variants = await db
+    .select()
+    .from(abTestVariants)
+    .where(eq(abTestVariants.testId, testId))
+    .orderBy(abTestVariants.label);
+  
+  return { test, variants };
+}
+
+/**
+ * Update an A/B test
+ */
+export async function updateABTest(testId: number, userId: number, data: Partial<InsertABTest>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(abTests)
+    .set(data)
+    .where(and(eq(abTests.id, testId), eq(abTests.userId, userId)));
+}
+
+/**
+ * Delete an A/B test and its variants
+ */
+export async function deleteABTest(testId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Delete variants first
+  await db.delete(abTestVariants).where(eq(abTestVariants.testId, testId));
+  
+  // Delete test
+  await db.delete(abTests).where(and(eq(abTests.id, testId), eq(abTests.userId, userId)));
+}
+
+/**
+ * Create a variant for an A/B test
+ */
+export async function createABTestVariant(data: InsertABTestVariant): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(abTestVariants).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Update a variant
+ */
+export async function updateABTestVariant(variantId: number, data: Partial<InsertABTestVariant>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(abTestVariants)
+    .set(data)
+    .where(eq(abTestVariants.id, variantId));
+}
+
+/**
+ * Delete a variant
+ */
+export async function deleteABTestVariant(variantId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db.delete(abTestVariants).where(eq(abTestVariants.id, variantId));
+}
+
+/**
+ * Start an A/B test
+ */
+export async function startABTest(testId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(abTests)
+    .set({
+      status: "active",
+      startedAt: new Date()
+    })
+    .where(and(eq(abTests.id, testId), eq(abTests.userId, userId)));
+}
+
+/**
+ * Complete an A/B test with winner
+ */
+export async function completeABTest(
+  testId: number, 
+  userId: number, 
+  winningVariantId: number,
+  confidenceLevel: number
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(abTests)
+    .set({
+      status: "completed",
+      endedAt: new Date(),
+      winningVariantId,
+      confidenceLevel
+    })
+    .where(and(eq(abTests.id, testId), eq(abTests.userId, userId)));
+}
+
+/**
+ * Update variant analytics
+ */
+export async function updateVariantAnalytics(
+  variantId: number,
+  analytics: {
+    impressions?: number;
+    engagements?: number;
+    clicks?: number;
+    shares?: number;
+    comments?: number;
+    likes?: number;
+  }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Get current values
+  const [variant] = await db
+    .select()
+    .from(abTestVariants)
+    .where(eq(abTestVariants.id, variantId))
+    .limit(1);
+  
+  if (!variant) return;
+  
+  const newImpressions = (variant.impressions || 0) + (analytics.impressions || 0);
+  const newEngagements = (variant.engagements || 0) + (analytics.engagements || 0);
+  const newClicks = (variant.clicks || 0) + (analytics.clicks || 0);
+  const newShares = (variant.shares || 0) + (analytics.shares || 0);
+  const newComments = (variant.comments || 0) + (analytics.comments || 0);
+  const newLikes = (variant.likes || 0) + (analytics.likes || 0);
+  
+  // Calculate engagement rate in basis points
+  const engagementRate = newImpressions > 0 
+    ? Math.round((newEngagements / newImpressions) * 10000) 
+    : 0;
+  
+  await db
+    .update(abTestVariants)
+    .set({
+      impressions: newImpressions,
+      engagements: newEngagements,
+      clicks: newClicks,
+      shares: newShares,
+      comments: newComments,
+      likes: newLikes,
+      engagementRate
+    })
+    .where(eq(abTestVariants.id, variantId));
+}
+
+/**
+ * Get active A/B tests that need to be checked for completion
+ */
+export async function getActiveABTests(): Promise<ABTest[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(abTests)
+    .where(eq(abTests.status, "active"));
+}
+
+/**
+ * Calculate statistical significance between two variants
+ * Returns confidence level (0-100)
+ */
+export function calculateStatisticalSignificance(
+  variantA: { impressions: number; engagements: number },
+  variantB: { impressions: number; engagements: number }
+): number {
+  // Simple chi-square test for A/B testing
+  const rateA = variantA.impressions > 0 ? variantA.engagements / variantA.impressions : 0;
+  const rateB = variantB.impressions > 0 ? variantB.engagements / variantB.impressions : 0;
+  
+  const totalImpressions = variantA.impressions + variantB.impressions;
+  const totalEngagements = variantA.engagements + variantB.engagements;
+  
+  if (totalImpressions < 100 || totalEngagements < 10) {
+    return 0; // Not enough data
+  }
+  
+  const pooledRate = totalEngagements / totalImpressions;
+  const standardError = Math.sqrt(
+    pooledRate * (1 - pooledRate) * (1 / variantA.impressions + 1 / variantB.impressions)
+  );
+  
+  if (standardError === 0) return 0;
+  
+  const zScore = Math.abs(rateA - rateB) / standardError;
+  
+  // Convert z-score to confidence level
+  // z=1.65 -> 90%, z=1.96 -> 95%, z=2.58 -> 99%
+  if (zScore >= 2.58) return 99;
+  if (zScore >= 1.96) return 95;
+  if (zScore >= 1.65) return 90;
+  if (zScore >= 1.28) return 80;
+  if (zScore >= 1.04) return 70;
+  if (zScore >= 0.84) return 60;
+  
+  return Math.round(zScore * 30); // Rough approximation for lower values
+}
+
+/**
+ * Determine the winner of an A/B test
+ */
+export async function determineABTestWinner(testId: number): Promise<{
+  winnerId: number | null;
+  confidence: number;
+  recommendation: string;
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const variants = await db
+    .select()
+    .from(abTestVariants)
+    .where(eq(abTestVariants.testId, testId))
+    .orderBy(desc(abTestVariants.engagementRate));
+  
+  if (variants.length < 2) {
+    return { winnerId: null, confidence: 0, recommendation: "Need at least 2 variants to determine a winner" };
+  }
+  
+  const [best, second] = variants;
+  
+  const confidence = calculateStatisticalSignificance(
+    { impressions: best.impressions || 0, engagements: best.engagements || 0 },
+    { impressions: second.impressions || 0, engagements: second.engagements || 0 }
+  );
+  
+  if (confidence >= 95) {
+    return {
+      winnerId: best.id,
+      confidence,
+      recommendation: `Variant ${best.label} is the clear winner with ${(best.engagementRate || 0) / 100}% engagement rate (${confidence}% confidence)`
+    };
+  } else if (confidence >= 80) {
+    return {
+      winnerId: best.id,
+      confidence,
+      recommendation: `Variant ${best.label} is likely the winner but consider running longer for more confidence`
+    };
+  } else {
+    return {
+      winnerId: null,
+      confidence,
+      recommendation: "Results are not statistically significant yet. Continue running the test."
+    };
   }
 }

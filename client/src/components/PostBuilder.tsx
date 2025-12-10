@@ -52,7 +52,8 @@ const platformConfig: Record<string, { icon: string; color: string; label: strin
   twitter: { icon: "𝕏", color: "bg-black", label: "X (Twitter)" },
   facebook: { icon: "f", color: "bg-blue-500", label: "Facebook" },
   instagram: { icon: "📷", color: "bg-gradient-to-r from-purple-500 to-pink-500", label: "Instagram" },
-  threads: { icon: "@", color: "bg-black", label: "Threads" }
+  threads: { icon: "@", color: "bg-black", label: "Threads" },
+  bluesky: { icon: "🦋", color: "bg-sky-500", label: "Bluesky" }
 };
 
 interface PostBuilderProps {

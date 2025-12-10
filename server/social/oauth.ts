@@ -28,7 +28,7 @@ socialOAuthRouter.get("/connect/:platform", async (req, res) => {
     }
     
     // Validate platform
-    if (!["linkedin", "twitter", "facebook", "instagram", "threads"].includes(platform)) {
+if (!["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky"].includes(platform)) {
       return res.status(400).json({ error: "Invalid platform" });
     }
     
@@ -125,6 +125,7 @@ socialOAuthRouter.get("/connect-urls", async (req, res) => {
     twitter: `${baseUrl}/api/social/connect/twitter`,
     facebook: `${baseUrl}/api/social/connect/facebook`,
     instagram: `${baseUrl}/api/social/connect/instagram`,
-    threads: `${baseUrl}/api/social/connect/threads`
+    threads: `${baseUrl}/api/social/connect/threads`,
+    bluesky: `${baseUrl}/api/social/connect/bluesky`
   });
 });

@@ -19,12 +19,19 @@ import {
   canResendVerification,
   getVerificationStatus,
 } from "./services/emailVerification";
+import {
+  getDigestPreferences,
+  updateDigestPreferences,
+  sendDigestEmail,
+  generateDigestContent,
+  formatDigestEmail,
+} from "./services/emailDigest";
 
 // ============================================
 // VALIDATION SCHEMAS
 // ============================================
 
-const platformSchema = z.enum(["linkedin", "twitter", "facebook", "instagram", "threads", "all"]);
+const platformSchema = z.enum(["linkedin", "twitter", "facebook", "instagram", "threads", "bluesky", "all"]);
 const postStatusSchema = z.enum(["draft", "scheduled", "published", "failed"]);
 const knowledgeBaseTypeSchema = z.enum(["brand_guideline", "swipe_file", "ai_instruction", "testimonial", "faq", "other"]);
 const teamRoleSchema = z.enum(["owner", "admin", "editor", "viewer"]);
@@ -164,6 +171,11 @@ const platformLimits: Record<string, { chars: number; hashtags: number; tips: st
     chars: 500,
     hashtags: 5,
     tips: "Conversational, authentic voice, topic tags instead of hashtags, max 5 links"
+  },
+  bluesky: {
+    chars: 300,
+    hashtags: 5,
+    tips: "Authentic, conversational, decentralized community focus, 300 char limit"
   }
 };
 
@@ -1401,6 +1413,49 @@ ${aiContext}`
         const { cancelAccountDeletion } = await import("./services/accountDeletion");
         return await cancelAccountDeletion(ctx.user.id);
       }),
+    
+    // Email Digest Preferences
+    getDigestPreferences: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getDigestPreferences(ctx.user.id);
+      }),
+    
+    updateDigestPreferences: protectedProcedure
+      .input(z.object({
+        enabled: z.boolean().optional(),
+        frequency: z.enum(["weekly", "monthly"]).optional(),
+        dayOfWeek: z.number().min(0).max(6).optional(),
+        dayOfMonth: z.number().min(1).max(28).optional(),
+        hourUtc: z.number().min(0).max(23).optional(),
+        includeAnalytics: z.boolean().optional(),
+        includeGoalProgress: z.boolean().optional(),
+        includeTopPosts: z.boolean().optional(),
+        includePlatformComparison: z.boolean().optional(),
+        includeScheduledPosts: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await updateDigestPreferences(ctx.user.id, input);
+        return { success: true };
+      }),
+    
+    previewDigest: protectedProcedure
+      .input(z.object({
+        period: z.enum(["weekly", "monthly"])
+      }))
+      .query(async ({ ctx, input }) => {
+        const content = await generateDigestContent(ctx.user.id, input.period);
+        if (!content) return { preview: null };
+        return { preview: formatDigestEmail(content) };
+      }),
+    
+    sendTestDigest: protectedProcedure
+      .input(z.object({
+        period: z.enum(["weekly", "monthly"])
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await sendDigestEmail(ctx.user.id, input.period);
+        return { success };
+      }),
   }),
 
   // ============================================
@@ -2025,6 +2080,190 @@ ${aiContext}`
           throw new Error("Admin access required");
         }
         await db.deleteFeaturedPartner(input.id);
+        return { success: true };
+      }),
+  }),
+
+  // ============================================
+  // A/B TESTING ROUTER
+  // ============================================
+  abTesting: router({
+    /** Get all A/B tests for the current user */
+    list: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await db.getUserABTests(ctx.user.id);
+      }),
+    
+    /** Get a specific A/B test with variants */
+    get: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getABTestWithVariants(input.testId, ctx.user.id);
+      }),
+    
+    /** Create a new A/B test */
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        platform: platformSchema.exclude(["all"]),
+        durationHours: z.number().min(1).max(720).default(48), // Max 30 days
+        variants: z.array(z.object({
+          label: z.string().min(1).max(10),
+          content: z.string().min(1),
+          hashtags: z.array(z.string()).optional(),
+          mediaUrls: z.array(z.string()).optional(),
+        })).min(2).max(5), // 2-5 variants
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Create the test
+        const testId = await db.createABTest({
+          userId: ctx.user.id,
+          name: input.name,
+          description: input.description,
+          platform: input.platform,
+          durationHours: input.durationHours,
+          status: "draft",
+        });
+        
+        // Create variants
+        for (const variant of input.variants) {
+          await db.createABTestVariant({
+            testId,
+            label: variant.label,
+            content: variant.content,
+            hashtags: variant.hashtags,
+            mediaUrls: variant.mediaUrls,
+          });
+        }
+        
+        return { testId };
+      }),
+    
+    /** Update an A/B test */
+    update: protectedProcedure
+      .input(z.object({
+        testId: z.number(),
+        name: z.string().min(1).max(255).optional(),
+        description: z.string().optional(),
+        durationHours: z.number().min(1).max(720).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { testId, ...data } = input;
+        await db.updateABTest(testId, ctx.user.id, data);
+        return { success: true };
+      }),
+    
+    /** Delete an A/B test */
+    delete: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteABTest(input.testId, ctx.user.id);
+        return { success: true };
+      }),
+    
+    /** Add a variant to an existing test */
+    addVariant: protectedProcedure
+      .input(z.object({
+        testId: z.number(),
+        label: z.string().min(1).max(10),
+        content: z.string().min(1),
+        hashtags: z.array(z.string()).optional(),
+        mediaUrls: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        // Verify test belongs to user
+        const test = await db.getABTest(input.testId, ctx.user.id);
+        if (!test) throw new Error("Test not found");
+        if (test.status !== "draft") throw new Error("Cannot add variants to active test");
+        
+        const variantId = await db.createABTestVariant({
+          testId: input.testId,
+          label: input.label,
+          content: input.content,
+          hashtags: input.hashtags,
+          mediaUrls: input.mediaUrls,
+        });
+        
+        return { variantId };
+      }),
+    
+    /** Update a variant */
+    updateVariant: protectedProcedure
+      .input(z.object({
+        variantId: z.number(),
+        content: z.string().min(1).optional(),
+        hashtags: z.array(z.string()).optional(),
+        mediaUrls: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { variantId, ...data } = input;
+        await db.updateABTestVariant(variantId, data);
+        return { success: true };
+      }),
+    
+    /** Delete a variant */
+    deleteVariant: protectedProcedure
+      .input(z.object({ variantId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteABTestVariant(input.variantId);
+        return { success: true };
+      }),
+    
+    /** Start an A/B test */
+    start: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const testData = await db.getABTestWithVariants(input.testId, ctx.user.id);
+        if (!testData) throw new Error("Test not found");
+        if (testData.test.status !== "draft") throw new Error("Test already started");
+        if (testData.variants.length < 2) throw new Error("Need at least 2 variants");
+        
+        await db.startABTest(input.testId, ctx.user.id);
+        return { success: true };
+      }),
+    
+    /** Complete an A/B test manually */
+    complete: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await db.determineABTestWinner(input.testId);
+        if (!result) throw new Error("Could not determine winner");
+        
+        if (result.winnerId) {
+          await db.completeABTest(input.testId, ctx.user.id, result.winnerId, result.confidence);
+        }
+        
+        return result;
+      }),
+    
+    /** Get test results/analysis */
+    getResults: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const testData = await db.getABTestWithVariants(input.testId, ctx.user.id);
+        if (!testData) throw new Error("Test not found");
+        
+        const analysis = await db.determineABTestWinner(input.testId);
+        
+        return {
+          test: testData.test,
+          variants: testData.variants.map(v => ({
+            ...v,
+            engagementRateFormatted: ((v.engagementRate || 0) / 100).toFixed(2) + "%"
+          })),
+          analysis
+        };
+      }),
+    
+    /** Cancel an active test */
+    cancel: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.updateABTest(input.testId, ctx.user.id, {
+          status: "cancelled",
+          endedAt: new Date()
+        });
         return { success: true };
       }),
   }),

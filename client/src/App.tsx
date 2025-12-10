@@ -31,6 +31,7 @@ import BlogPost from "./pages/BlogPost";
 import BlogAdmin from "./pages/BlogAdmin";
 import TestimonialsAdmin from "./pages/TestimonialsAdmin";
 import PlatformAnalytics from "./pages/PlatformAnalytics";
+import ABTesting from "./pages/ABTesting";
 
 /** Protected Route wrapper */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -92,6 +93,7 @@ function Router() {
       <Route path="/calendar">{() => <ProtectedRoute component={ContentCalendar} />}</Route>
       <Route path="/analytics">{() => <ProtectedRoute component={Analytics} />}</Route>
       <Route path="/analytics/platforms">{() => <ProtectedRoute component={PlatformAnalytics} />}</Route>
+      <Route path="/ab-testing">{() => <ProtectedRoute component={ABTesting} />}</Route>
       <Route path="/team">{() => <ProtectedRoute component={TeamManagement} />}</Route>
       <Route path="/settings">{() => <ProtectedRoute component={Settings} />}</Route>
       <Route path="/verify-email" component={VerifyEmail} />

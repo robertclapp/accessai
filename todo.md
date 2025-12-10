@@ -325,3 +325,38 @@
 - [x] Add comparison badges (below/average/above/top performer)
 - [x] Provide actionable recommendations per platform
 - [x] Write tests for all new features (154 tests passing)
+
+
+## Bluesky Integration (New)
+- [x] Research Bluesky AT Protocol API
+- [x] Create Bluesky API adapter with app password auth
+- [x] Add Bluesky to platform enum in database schema
+- [x] Implement Bluesky authentication (app password)
+- [x] Add Bluesky-specific content formatting (300 char limit)
+- [x] Update post builder UI to include Bluesky option
+- [x] Update settings page for Bluesky account connection
+- [x] Add Bluesky to scheduled posting system
+- [x] Write tests for Bluesky integration (174 tests passing)
+
+## Email Digest Reports (New)
+- [x] Create email digest preferences table
+- [x] Add digest frequency settings (weekly/monthly)
+- [x] Build analytics summary email template
+- [x] Include goal progress in digest
+- [x] Include top performing posts
+- [x] Include platform comparison highlights
+- [x] Add digest API endpoints (get/update preferences, preview, send test)
+- [x] Add digest settings to user preferences
+- [x] Write tests for email digest functionality (174 tests passing)
+
+## A/B Testing for Posts (New)
+- [x] Create ab_tests database table
+- [x] Create ab_test_variants table
+- [x] Add API endpoints for creating A/B tests
+- [x] Build A/B test creation UI at /ab-testing
+- [x] Display variant performance comparison
+- [x] Calculate statistical significance
+- [x] Declare winning variant with confidence level
+- [x] Add A/B test history view
+- [x] Add A/B Testing to sidebar navigation
+- [x] Write tests for A/B testing functionality (174 tests passing)

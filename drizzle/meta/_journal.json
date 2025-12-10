@@ -71,6 +71,27 @@
       "when": 1765328564377,
       "tag": "0009_soft_vulture",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1765337985703,
+      "tag": "0010_panoramic_namor",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1765338258102,
+      "tag": "0011_true_sir_ram",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1765338497476,
+      "tag": "0012_glamorous_hobgoblin",
+      "breakpoints": true
     }
   ]
 }
