@@ -505,3 +505,127 @@ export function getExportTypes(): Array<{ type: ExportType; name: string; descri
     }
   ];
 }
+
+
+// ============================================
+// PLATFORM ANALYTICS EXPORT
+// ============================================
+
+/**
+ * Exports platform analytics comparison data
+ */
+export async function exportPlatformAnalytics(
+  userId: number,
+  format: ExportFormat,
+  dateRange?: { start: Date; end: Date }
+): Promise<ExportResult> {
+  try {
+    const platformMetrics = await db.getPlatformAnalyticsComparison(userId, dateRange);
+    const bestPlatform = await db.getBestPerformingPlatform(userId);
+    
+    if (format === "csv") {
+      // Create CSV with platform metrics
+      const csvData = platformMetrics.map(p => ({
+        platform: p.platform,
+        postCount: p.postCount,
+        publishedCount: p.publishedCount,
+        totalImpressions: p.totalImpressions,
+        totalEngagements: p.totalEngagements,
+        totalClicks: p.totalClicks,
+        totalLikes: p.totalLikes,
+        totalComments: p.totalComments,
+        totalShares: p.totalShares,
+        avgAccessibilityScore: p.avgAccessibilityScore,
+        engagementRate: p.engagementRate.toFixed(2) + "%",
+        bestPostId: p.bestPerformingPost?.id || "",
+        bestPostTitle: p.bestPerformingPost?.title || "",
+        bestPostEngagements: p.bestPerformingPost?.engagements || ""
+      }));
+      
+      const csvContent = arrayToCsv(csvData, [
+        "platform", "postCount", "publishedCount", "totalImpressions",
+        "totalEngagements", "totalClicks", "totalLikes", "totalComments",
+        "totalShares", "avgAccessibilityScore", "engagementRate",
+        "bestPostId", "bestPostTitle", "bestPostEngagements"
+      ]);
+      
+      const dateStr = dateRange 
+        ? `${dateRange.start.toISOString().split("T")[0]}_to_${dateRange.end.toISOString().split("T")[0]}`
+        : "all-time";
+      const fileName = `platform-analytics-${dateStr}-${Date.now()}`;
+      const fileKey = `exports/${userId}/${fileName}-${nanoid(8)}.csv`;
+      
+      const { url } = await storagePut(
+        fileKey,
+        Buffer.from(csvContent, "utf-8"),
+        "text/csv"
+      );
+      
+      return {
+        success: true,
+        fileUrl: url,
+        fileKey,
+        fileName: `${fileName}.csv`,
+        recordCount: platformMetrics.length
+      };
+    }
+    
+    // JSON format with full data
+    const jsonData = {
+      exportedAt: new Date().toISOString(),
+      exportType: "platform_analytics",
+      dateRange: dateRange ? {
+        start: dateRange.start.toISOString(),
+        end: dateRange.end.toISOString()
+      } : "all-time",
+      summary: {
+        totalPlatforms: platformMetrics.length,
+        bestPerformingPlatform: bestPlatform
+      },
+      platforms: platformMetrics
+    };
+    
+    const dateStr = dateRange 
+      ? `${dateRange.start.toISOString().split("T")[0]}_to_${dateRange.end.toISOString().split("T")[0]}`
+      : "all-time";
+    const fileName = `platform-analytics-${dateStr}-${Date.now()}`;
+    const fileKey = `exports/${userId}/${fileName}-${nanoid(8)}.json`;
+    
+    const { url } = await storagePut(
+      fileKey,
+      Buffer.from(JSON.stringify(jsonData, null, 2), "utf-8"),
+      "application/json"
+    );
+    
+    return {
+      success: true,
+      fileUrl: url,
+      fileKey,
+      fileName: `${fileName}.json`,
+      recordCount: platformMetrics.length
+    };
+    
+  } catch (error) {
+    console.error("[DataExport] Platform analytics export failed:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Export failed"
+    };
+  }
+}
+
+// Re-export arrayToCsv for use in the export function
+function arrayToCsvExport<T extends Record<string, unknown>>(data: T[], headers?: string[]): string {
+  if (data.length === 0) {
+    return headers ? headers.join(",") + "\n" : "";
+  }
+  
+  const keys = headers || Object.keys(data[0]);
+  const headerRow = keys.join(",");
+  
+  const rows = data.map(item => 
+    keys.map(key => escapeCsvValue(item[key])).join(",")
+  );
+  
+  return [headerRow, ...rows].join("\n");
+}

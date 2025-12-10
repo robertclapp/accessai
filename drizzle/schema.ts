@@ -540,3 +540,98 @@ export const featuredPartners = mysqlTable("featured_partners", {
 
 export type FeaturedPartner = typeof featuredPartners.$inferSelect;
 export type InsertFeaturedPartner = typeof featuredPartners.$inferInsert;
+
+
+/**
+ * Platform Goals
+ * 
+ * Stores user-defined engagement rate targets per platform.
+ * Tracks goal progress and achievement history.
+ */
+export const platformGoals = mysqlTable("platform_goals", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  /** Target platform */
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads"]).notNull(),
+  /** Target engagement rate percentage (e.g., 5.0 = 5%) */
+  targetEngagementRate: int("targetEngagementRate").notNull(),
+  /** Target number of posts per period */
+  targetPostsPerMonth: int("targetPostsPerMonth"),
+  /** Target impressions per post */
+  targetImpressionsPerPost: int("targetImpressionsPerPost"),
+  /** Goal period type */
+  periodType: mysqlEnum("periodType", ["weekly", "monthly", "quarterly"]).default("monthly"),
+  /** Whether the goal is currently active */
+  isActive: boolean("isActive").default(true),
+  /** When the goal was achieved (if applicable) */
+  achievedAt: timestamp("achievedAt"),
+  /** Notes about the goal */
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PlatformGoal = typeof platformGoals.$inferSelect;
+export type InsertPlatformGoal = typeof platformGoals.$inferInsert;
+
+/**
+ * Goal History
+ * 
+ * Tracks historical progress toward goals for trend analysis.
+ */
+export const goalHistory = mysqlTable("goal_history", {
+  id: int("id").autoincrement().primaryKey(),
+  goalId: int("goalId").notNull(),
+  userId: int("userId").notNull(),
+  /** Recorded engagement rate at this point */
+  engagementRate: int("engagementRate").notNull(),
+  /** Number of posts in this period */
+  postCount: int("postCount").default(0),
+  /** Total impressions in this period */
+  impressions: int("impressions").default(0),
+  /** Progress percentage toward goal (0-100+) */
+  progressPercent: int("progressPercent").default(0),
+  /** Period start date */
+  periodStart: timestamp("periodStart").notNull(),
+  /** Period end date */
+  periodEnd: timestamp("periodEnd").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GoalHistory = typeof goalHistory.$inferSelect;
+export type InsertGoalHistory = typeof goalHistory.$inferInsert;
+
+/**
+ * Industry Benchmarks
+ * 
+ * Stores industry-average engagement metrics for comparison.
+ * Updated periodically from research data.
+ */
+export const industryBenchmarks = mysqlTable("industry_benchmarks", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Industry category */
+  industry: varchar("industry", { length: 100 }).notNull(),
+  /** Platform for the benchmark */
+  platform: mysqlEnum("platform", ["linkedin", "twitter", "facebook", "instagram", "threads"]).notNull(),
+  /** Average engagement rate for this industry/platform */
+  avgEngagementRate: int("avgEngagementRate").notNull(),
+  /** Median engagement rate */
+  medianEngagementRate: int("medianEngagementRate"),
+  /** Top 10% engagement rate threshold */
+  topPerformerRate: int("topPerformerRate"),
+  /** Average posts per week */
+  avgPostsPerWeek: int("avgPostsPerWeek"),
+  /** Average impressions per post */
+  avgImpressionsPerPost: int("avgImpressionsPerPost"),
+  /** Data source for the benchmark */
+  dataSource: varchar("dataSource", { length: 255 }),
+  /** When the benchmark data was collected */
+  dataCollectedAt: timestamp("dataCollectedAt"),
+  /** Year the benchmark applies to */
+  benchmarkYear: int("benchmarkYear").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type IndustryBenchmark = typeof industryBenchmarks.$inferSelect;
+export type InsertIndustryBenchmark = typeof industryBenchmarks.$inferInsert;

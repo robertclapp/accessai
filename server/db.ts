@@ -18,7 +18,10 @@ import {
   blogPosts, InsertBlogPost,
   blogPostTags,
   testimonials, InsertTestimonial,
-  featuredPartners, InsertFeaturedPartner
+  featuredPartners, InsertFeaturedPartner,
+  platformGoals, InsertPlatformGoal, PlatformGoal,
+  goalHistory, InsertGoalHistory,
+  industryBenchmarks, InsertIndustryBenchmark, IndustryBenchmark
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -1418,4 +1421,450 @@ export async function getBestPerformingPlatform(userId: number): Promise<{
     totalEngagements: best.totalEngagements,
     recommendation: recommendations[best.platform] || `Continue focusing on ${best.platform} for best results.`
   };
+}
+
+
+// ============================================
+// PLATFORM GOALS
+// ============================================
+
+/**
+ * Get all goals for a user
+ */
+export async function getUserPlatformGoals(userId: number): Promise<PlatformGoal[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(platformGoals)
+    .where(eq(platformGoals.userId, userId))
+    .orderBy(desc(platformGoals.createdAt));
+}
+
+/**
+ * Get active goals for a user
+ */
+export async function getActiveGoals(userId: number): Promise<PlatformGoal[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(platformGoals)
+    .where(and(
+      eq(platformGoals.userId, userId),
+      eq(platformGoals.isActive, true)
+    ))
+    .orderBy(platformGoals.platform);
+}
+
+/**
+ * Get a specific goal by ID
+ */
+export async function getPlatformGoal(goalId: number, userId: number): Promise<PlatformGoal | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db
+    .select()
+    .from(platformGoals)
+    .where(and(
+      eq(platformGoals.id, goalId),
+      eq(platformGoals.userId, userId)
+    ))
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+/**
+ * Create a new platform goal
+ */
+export async function createPlatformGoal(data: InsertPlatformGoal): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Deactivate existing goals for the same platform
+  await db
+    .update(platformGoals)
+    .set({ isActive: false })
+    .where(and(
+      eq(platformGoals.userId, data.userId),
+      eq(platformGoals.platform, data.platform),
+      eq(platformGoals.isActive, true)
+    ));
+  
+  const result = await db.insert(platformGoals).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Update a platform goal
+ */
+export async function updatePlatformGoal(goalId: number, userId: number, data: Partial<InsertPlatformGoal>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(platformGoals)
+    .set(data)
+    .where(and(
+      eq(platformGoals.id, goalId),
+      eq(platformGoals.userId, userId)
+    ));
+}
+
+/**
+ * Delete a platform goal
+ */
+export async function deletePlatformGoal(goalId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  // Delete associated history
+  await db.delete(goalHistory).where(eq(goalHistory.goalId, goalId));
+  
+  // Delete the goal
+  await db
+    .delete(platformGoals)
+    .where(and(
+      eq(platformGoals.id, goalId),
+      eq(platformGoals.userId, userId)
+    ));
+}
+
+/**
+ * Mark a goal as achieved
+ */
+export async function markGoalAchieved(goalId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(platformGoals)
+    .set({ achievedAt: new Date() })
+    .where(and(
+      eq(platformGoals.id, goalId),
+      eq(platformGoals.userId, userId)
+    ));
+}
+
+/**
+ * Get goal progress for a user
+ * Compares current metrics against goal targets
+ */
+export async function getGoalProgress(userId: number): Promise<Array<{
+  goal: PlatformGoal;
+  currentEngagementRate: number;
+  progressPercent: number;
+  postsThisPeriod: number;
+  isAchieved: boolean;
+}>> {
+  const goals = await getActiveGoals(userId);
+  const metrics = await getPlatformAnalyticsComparison(userId);
+  
+  const progress = goals.map(goal => {
+    const platformMetric = metrics.find(m => m.platform === goal.platform);
+    const currentRate = platformMetric?.engagementRate || 0;
+    const targetRate = goal.targetEngagementRate / 100; // Convert from stored int (500 = 5.00%)
+    const progressPercent = targetRate > 0 ? Math.min(100, Math.round((currentRate / targetRate) * 100)) : 0;
+    
+    return {
+      goal,
+      currentEngagementRate: currentRate,
+      progressPercent,
+      postsThisPeriod: platformMetric?.postCount || 0,
+      isAchieved: currentRate >= targetRate
+    };
+  });
+  
+  return progress;
+}
+
+/**
+ * Record goal history snapshot
+ */
+export async function recordGoalHistory(data: InsertGoalHistory): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(goalHistory).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Get goal history for a specific goal
+ */
+export async function getGoalHistoryForGoal(goalId: number): Promise<Array<typeof goalHistory.$inferSelect>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(goalHistory)
+    .where(eq(goalHistory.goalId, goalId))
+    .orderBy(desc(goalHistory.periodEnd));
+}
+
+// ============================================
+// INDUSTRY BENCHMARKS
+// ============================================
+
+/**
+ * Get benchmarks for a specific industry and platform
+ */
+export async function getIndustryBenchmark(
+  industry: string,
+  platform: string
+): Promise<IndustryBenchmark | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const result = await db
+    .select()
+    .from(industryBenchmarks)
+    .where(and(
+      eq(industryBenchmarks.industry, industry),
+      eq(industryBenchmarks.platform, platform as "linkedin" | "twitter" | "facebook" | "instagram" | "threads")
+    ))
+    .orderBy(desc(industryBenchmarks.benchmarkYear))
+    .limit(1);
+  
+  return result[0] || null;
+}
+
+/**
+ * Get all benchmarks for a specific industry
+ */
+export async function getIndustryBenchmarks(industry: string): Promise<IndustryBenchmark[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(industryBenchmarks)
+    .where(eq(industryBenchmarks.industry, industry))
+    .orderBy(industryBenchmarks.platform);
+}
+
+/**
+ * Get all available industries
+ */
+export async function getAvailableIndustries(): Promise<string[]> {
+  const db = await getDb();
+  if (!db) return getDefaultIndustries();
+  
+  const result = await db
+    .selectDistinct({ industry: industryBenchmarks.industry })
+    .from(industryBenchmarks);
+  
+  const industries = result.map(r => r.industry);
+  return industries.length > 0 ? industries : getDefaultIndustries();
+}
+
+/**
+ * Default industries when no benchmarks exist
+ */
+function getDefaultIndustries(): string[] {
+  return [
+    "Technology",
+    "Healthcare",
+    "Finance",
+    "Retail & E-commerce",
+    "Education",
+    "Marketing & Advertising",
+    "Real Estate",
+    "Travel & Hospitality",
+    "Food & Beverage",
+    "Entertainment",
+    "Non-profit",
+    "Professional Services",
+    "Manufacturing",
+    "Media & Publishing"
+  ];
+}
+
+/**
+ * Get default benchmark data (used when no custom benchmarks exist)
+ * Based on industry research and averages
+ */
+export function getDefaultBenchmarks(): Array<{
+  industry: string;
+  platform: string;
+  avgEngagementRate: number;
+  medianEngagementRate: number;
+  topPerformerRate: number;
+  avgPostsPerWeek: number;
+}> {
+  // Default benchmarks based on industry research (2024 data)
+  return [
+    // Technology
+    { industry: "Technology", platform: "linkedin", avgEngagementRate: 280, medianEngagementRate: 220, topPerformerRate: 550, avgPostsPerWeek: 5 },
+    { industry: "Technology", platform: "twitter", avgEngagementRate: 150, medianEngagementRate: 100, topPerformerRate: 350, avgPostsPerWeek: 14 },
+    { industry: "Technology", platform: "facebook", avgEngagementRate: 80, medianEngagementRate: 50, topPerformerRate: 200, avgPostsPerWeek: 3 },
+    { industry: "Technology", platform: "instagram", avgEngagementRate: 180, medianEngagementRate: 140, topPerformerRate: 400, avgPostsPerWeek: 4 },
+    { industry: "Technology", platform: "threads", avgEngagementRate: 200, medianEngagementRate: 150, topPerformerRate: 450, avgPostsPerWeek: 7 },
+    
+    // Healthcare
+    { industry: "Healthcare", platform: "linkedin", avgEngagementRate: 320, medianEngagementRate: 260, topPerformerRate: 600, avgPostsPerWeek: 4 },
+    { industry: "Healthcare", platform: "twitter", avgEngagementRate: 120, medianEngagementRate: 80, topPerformerRate: 280, avgPostsPerWeek: 10 },
+    { industry: "Healthcare", platform: "facebook", avgEngagementRate: 100, medianEngagementRate: 70, topPerformerRate: 250, avgPostsPerWeek: 3 },
+    { industry: "Healthcare", platform: "instagram", avgEngagementRate: 220, medianEngagementRate: 180, topPerformerRate: 480, avgPostsPerWeek: 3 },
+    { industry: "Healthcare", platform: "threads", avgEngagementRate: 180, medianEngagementRate: 130, topPerformerRate: 380, avgPostsPerWeek: 5 },
+    
+    // Finance
+    { industry: "Finance", platform: "linkedin", avgEngagementRate: 250, medianEngagementRate: 200, topPerformerRate: 500, avgPostsPerWeek: 5 },
+    { industry: "Finance", platform: "twitter", avgEngagementRate: 100, medianEngagementRate: 70, topPerformerRate: 250, avgPostsPerWeek: 12 },
+    { industry: "Finance", platform: "facebook", avgEngagementRate: 60, medianEngagementRate: 40, topPerformerRate: 150, avgPostsPerWeek: 2 },
+    { industry: "Finance", platform: "instagram", avgEngagementRate: 150, medianEngagementRate: 110, topPerformerRate: 350, avgPostsPerWeek: 3 },
+    { industry: "Finance", platform: "threads", avgEngagementRate: 160, medianEngagementRate: 120, topPerformerRate: 360, avgPostsPerWeek: 6 },
+    
+    // Marketing & Advertising
+    { industry: "Marketing & Advertising", platform: "linkedin", avgEngagementRate: 350, medianEngagementRate: 280, topPerformerRate: 700, avgPostsPerWeek: 7 },
+    { industry: "Marketing & Advertising", platform: "twitter", avgEngagementRate: 200, medianEngagementRate: 150, topPerformerRate: 450, avgPostsPerWeek: 20 },
+    { industry: "Marketing & Advertising", platform: "facebook", avgEngagementRate: 120, medianEngagementRate: 90, topPerformerRate: 280, avgPostsPerWeek: 5 },
+    { industry: "Marketing & Advertising", platform: "instagram", avgEngagementRate: 280, medianEngagementRate: 220, topPerformerRate: 580, avgPostsPerWeek: 7 },
+    { industry: "Marketing & Advertising", platform: "threads", avgEngagementRate: 250, medianEngagementRate: 190, topPerformerRate: 520, avgPostsPerWeek: 10 },
+    
+    // Retail & E-commerce
+    { industry: "Retail & E-commerce", platform: "linkedin", avgEngagementRate: 200, medianEngagementRate: 160, topPerformerRate: 420, avgPostsPerWeek: 4 },
+    { industry: "Retail & E-commerce", platform: "twitter", avgEngagementRate: 130, medianEngagementRate: 90, topPerformerRate: 300, avgPostsPerWeek: 15 },
+    { industry: "Retail & E-commerce", platform: "facebook", avgEngagementRate: 90, medianEngagementRate: 60, topPerformerRate: 220, avgPostsPerWeek: 5 },
+    { industry: "Retail & E-commerce", platform: "instagram", avgEngagementRate: 250, medianEngagementRate: 200, topPerformerRate: 520, avgPostsPerWeek: 7 },
+    { industry: "Retail & E-commerce", platform: "threads", avgEngagementRate: 200, medianEngagementRate: 150, topPerformerRate: 420, avgPostsPerWeek: 8 },
+    
+    // Education
+    { industry: "Education", platform: "linkedin", avgEngagementRate: 380, medianEngagementRate: 300, topPerformerRate: 750, avgPostsPerWeek: 4 },
+    { industry: "Education", platform: "twitter", avgEngagementRate: 180, medianEngagementRate: 130, topPerformerRate: 400, avgPostsPerWeek: 10 },
+    { industry: "Education", platform: "facebook", avgEngagementRate: 150, medianEngagementRate: 110, topPerformerRate: 350, avgPostsPerWeek: 4 },
+    { industry: "Education", platform: "instagram", avgEngagementRate: 300, medianEngagementRate: 240, topPerformerRate: 620, avgPostsPerWeek: 5 },
+    { industry: "Education", platform: "threads", avgEngagementRate: 250, medianEngagementRate: 190, topPerformerRate: 520, avgPostsPerWeek: 6 }
+  ];
+}
+
+/**
+ * Compare user metrics against industry benchmarks
+ */
+export async function compareWithBenchmarks(
+  userId: number,
+  industry: string
+): Promise<Array<{
+  platform: string;
+  userEngagementRate: number;
+  industryAverage: number;
+  industryMedian: number;
+  topPerformerThreshold: number;
+  percentile: number;
+  comparison: "below_average" | "average" | "above_average" | "top_performer";
+  recommendation: string;
+}>> {
+  const userMetrics = await getPlatformAnalyticsComparison(userId);
+  const benchmarks = await getIndustryBenchmarks(industry);
+  
+  // Use default benchmarks if none exist in DB
+  const defaultBenchmarks = getDefaultBenchmarks().filter(b => b.industry === industry);
+  const benchmarkData = benchmarks.length > 0 
+    ? benchmarks 
+    : defaultBenchmarks.map(b => ({
+        ...b,
+        id: 0,
+        dataSource: "Default industry averages",
+        dataCollectedAt: null,
+        benchmarkYear: 2024,
+        avgImpressionsPerPost: null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }));
+  
+  const comparisons = userMetrics.map(metric => {
+    const benchmark = benchmarkData.find(b => b.platform === metric.platform);
+    
+    if (!benchmark) {
+      return {
+        platform: metric.platform,
+        userEngagementRate: metric.engagementRate,
+        industryAverage: 0,
+        industryMedian: 0,
+        topPerformerThreshold: 0,
+        percentile: 50,
+        comparison: "average" as const,
+        recommendation: "No benchmark data available for this platform in your industry."
+      };
+    }
+    
+    const avgRate = benchmark.avgEngagementRate / 100;
+    const medianRate = (benchmark.medianEngagementRate || benchmark.avgEngagementRate) / 100;
+    const topRate = (benchmark.topPerformerRate || benchmark.avgEngagementRate * 2) / 100;
+    
+    // Calculate percentile (simplified estimation)
+    let percentile: number;
+    let comparison: "below_average" | "average" | "above_average" | "top_performer";
+    let recommendation: string;
+    
+    if (metric.engagementRate >= topRate) {
+      percentile = 90 + Math.min(10, ((metric.engagementRate - topRate) / topRate) * 10);
+      comparison = "top_performer";
+      recommendation = `Outstanding! You're in the top 10% for ${metric.platform} in ${industry}. Keep doing what you're doing!`;
+    } else if (metric.engagementRate >= avgRate) {
+      percentile = 50 + ((metric.engagementRate - avgRate) / (topRate - avgRate)) * 40;
+      comparison = "above_average";
+      recommendation = `Great work! You're above the industry average on ${metric.platform}. Focus on consistency to reach top performer status.`;
+    } else if (metric.engagementRate >= medianRate * 0.7) {
+      percentile = 30 + ((metric.engagementRate - medianRate * 0.7) / (avgRate - medianRate * 0.7)) * 20;
+      comparison = "average";
+      recommendation = `You're performing at industry average on ${metric.platform}. Try experimenting with different content types to boost engagement.`;
+    } else {
+      percentile = Math.max(5, (metric.engagementRate / (medianRate * 0.7)) * 30);
+      comparison = "below_average";
+      recommendation = `There's room for improvement on ${metric.platform}. Consider posting more frequently and engaging with your audience's comments.`;
+    }
+    
+    return {
+      platform: metric.platform,
+      userEngagementRate: metric.engagementRate,
+      industryAverage: avgRate,
+      industryMedian: medianRate,
+      topPerformerThreshold: topRate,
+      percentile: Math.round(percentile),
+      comparison,
+      recommendation
+    };
+  });
+  
+  return comparisons;
+}
+
+/**
+ * Seed industry benchmarks (for initial setup)
+ */
+export async function seedIndustryBenchmarks(): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const defaults = getDefaultBenchmarks();
+  
+  for (const benchmark of defaults) {
+    const existing = await db
+      .select()
+      .from(industryBenchmarks)
+      .where(and(
+        eq(industryBenchmarks.industry, benchmark.industry),
+        eq(industryBenchmarks.platform, benchmark.platform as "linkedin" | "twitter" | "facebook" | "instagram" | "threads")
+      ))
+      .limit(1);
+    
+    if (existing.length === 0) {
+      await db.insert(industryBenchmarks).values({
+        industry: benchmark.industry,
+        platform: benchmark.platform as "linkedin" | "twitter" | "facebook" | "instagram" | "threads",
+        avgEngagementRate: benchmark.avgEngagementRate,
+        medianEngagementRate: benchmark.medianEngagementRate,
+        topPerformerRate: benchmark.topPerformerRate,
+        avgPostsPerWeek: benchmark.avgPostsPerWeek,
+        dataSource: "Industry research 2024",
+        benchmarkYear: 2024
+      });
+    }
+  }
 }

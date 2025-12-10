@@ -1063,6 +1063,170 @@ ${aiContext}`
     getBestPlatform: protectedProcedure.query(async ({ ctx }) => {
       return await db.getBestPerformingPlatform(ctx.user.id);
     }),
+    
+    /**
+     * Export platform analytics comparison data
+     */
+    exportPlatformComparison: protectedProcedure
+      .input(z.object({
+        format: z.enum(["csv", "json"]),
+        dateRange: z.object({
+          start: z.date(),
+          end: z.date()
+        }).optional()
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { exportPlatformAnalytics } = await import("./services/dataExport");
+        return await exportPlatformAnalytics(
+          ctx.user.id,
+          input.format,
+          input.dateRange
+        );
+      }),
+  }),
+
+  // ============================================
+  // PLATFORM GOALS ROUTER
+  // ============================================
+  goals: router({
+    /**
+     * Get all goals for the current user
+     */
+    list: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getUserPlatformGoals(ctx.user.id);
+    }),
+    
+    /**
+     * Get active goals with progress
+     */
+    getProgress: protectedProcedure.query(async ({ ctx }) => {
+      return await db.getGoalProgress(ctx.user.id);
+    }),
+    
+    /**
+     * Get a specific goal
+     */
+    get: protectedProcedure
+      .input(z.object({ goalId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getPlatformGoal(input.goalId, ctx.user.id);
+      }),
+    
+    /**
+     * Create a new platform goal
+     */
+    create: protectedProcedure
+      .input(z.object({
+        platform: z.enum(["linkedin", "twitter", "facebook", "instagram", "threads"]),
+        targetEngagementRate: z.number().min(1).max(10000), // Stored as int (500 = 5.00%)
+        targetPostsPerMonth: z.number().min(1).max(1000).optional(),
+        targetImpressionsPerPost: z.number().min(1).optional(),
+        periodType: z.enum(["weekly", "monthly", "quarterly"]).default("monthly"),
+        notes: z.string().optional()
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const goalId = await db.createPlatformGoal({
+          userId: ctx.user.id,
+          ...input
+        });
+        return { goalId };
+      }),
+    
+    /**
+     * Update a platform goal
+     */
+    update: protectedProcedure
+      .input(z.object({
+        goalId: z.number(),
+        targetEngagementRate: z.number().min(1).max(10000).optional(),
+        targetPostsPerMonth: z.number().min(1).max(1000).optional(),
+        targetImpressionsPerPost: z.number().min(1).optional(),
+        periodType: z.enum(["weekly", "monthly", "quarterly"]).optional(),
+        notes: z.string().optional(),
+        isActive: z.boolean().optional()
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { goalId, ...updates } = input;
+        await db.updatePlatformGoal(goalId, ctx.user.id, updates);
+        return { success: true };
+      }),
+    
+    /**
+     * Delete a platform goal
+     */
+    delete: protectedProcedure
+      .input(z.object({ goalId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deletePlatformGoal(input.goalId, ctx.user.id);
+        return { success: true };
+      }),
+    
+    /**
+     * Mark a goal as achieved
+     */
+    markAchieved: protectedProcedure
+      .input(z.object({ goalId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.markGoalAchieved(input.goalId, ctx.user.id);
+        return { success: true };
+      }),
+    
+    /**
+     * Get goal history
+     */
+    getHistory: protectedProcedure
+      .input(z.object({ goalId: z.number() }))
+      .query(async ({ input }) => {
+        return await db.getGoalHistoryForGoal(input.goalId);
+      }),
+  }),
+
+  // ============================================
+  // INDUSTRY BENCHMARKS ROUTER
+  // ============================================
+  benchmarks: router({
+    /**
+     * Get available industries
+     */
+    getIndustries: protectedProcedure.query(async () => {
+      return await db.getAvailableIndustries();
+    }),
+    
+    /**
+     * Get benchmarks for a specific industry
+     */
+    getByIndustry: protectedProcedure
+      .input(z.object({ industry: z.string() }))
+      .query(async ({ input }) => {
+        return await db.getIndustryBenchmarks(input.industry);
+      }),
+    
+    /**
+     * Compare user metrics against industry benchmarks
+     */
+    compare: protectedProcedure
+      .input(z.object({ industry: z.string() }))
+      .query(async ({ ctx, input }) => {
+        return await db.compareWithBenchmarks(ctx.user.id, input.industry);
+      }),
+    
+    /**
+     * Get default benchmarks (for reference)
+     */
+    getDefaults: protectedProcedure.query(() => {
+      return db.getDefaultBenchmarks();
+    }),
+    
+    /**
+     * Seed benchmarks (admin only)
+     */
+    seed: protectedProcedure.mutation(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") {
+        throw new Error("Admin access required");
+      }
+      await db.seedIndustryBenchmarks();
+      return { success: true };
+    }),
   }),
 
   // ============================================

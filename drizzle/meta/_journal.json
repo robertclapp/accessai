@@ -64,6 +64,13 @@
       "when": 1765309944330,
       "tag": "0008_clever_reptil",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1765328564377,
+      "tag": "0009_soft_vulture",
+      "breakpoints": true
     }
   ]
 }
