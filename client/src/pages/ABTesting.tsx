@@ -45,7 +45,10 @@ import {
   FileText,
   CalendarRange,
   ArrowRight,
-  Minus
+  Minus,
+  FileStack,
+  Copy,
+  Tag
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -75,6 +78,7 @@ export default function ABTesting() {
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
   const [isHistoryInsightsOpen, setIsHistoryInsightsOpen] = useState(false);
   const [isComparePeriodsOpen, setIsComparePeriodsOpen] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [selectedTestId, setSelectedTestId] = useState<number | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
@@ -317,6 +321,13 @@ export default function ABTesting() {
             >
               <CalendarRange className="w-4 h-4 mr-2" />
               Compare Periods
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsTemplatesOpen(true)}
+            >
+              <FileStack className="w-4 h-4 mr-2" />
+              Templates
             </Button>
             <Button
               variant="outline"
@@ -1064,6 +1075,12 @@ export default function ABTesting() {
       <TimePeriodComparisonDialog
         open={isComparePeriodsOpen}
         onOpenChange={setIsComparePeriodsOpen}
+      />
+      
+      {/* A/B Test Templates Dialog */}
+      <ABTestTemplatesDialog
+        open={isTemplatesOpen}
+        onOpenChange={setIsTemplatesOpen}
       />
       </div>
     </DashboardLayout>
@@ -1902,6 +1919,421 @@ function TimePeriodComparisonDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+    </Dialog>
+  );
+}
+
+
+// ============================================
+// A/B TEST TEMPLATES DIALOG COMPONENT
+// ============================================
+
+function ABTestTemplatesDialog({ 
+  open, 
+  onOpenChange,
+  onUseTemplate
+}: { 
+  open: boolean; 
+  onOpenChange: (open: boolean) => void;
+  onUseTemplate?: (template: {
+    variantATemplate: string;
+    variantALabel: string | null;
+    variantBTemplate: string;
+    variantBLabel: string | null;
+  }) => void;
+}) {
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [newTemplate, setNewTemplate] = useState({
+    name: "",
+    description: "",
+    category: "headline",
+    variantATemplate: "",
+    variantALabel: "Variant A",
+    variantBTemplate: "",
+    variantBLabel: "Variant B",
+    exampleUseCase: "",
+    tags: [] as string[],
+  });
+  const [tagInput, setTagInput] = useState("");
+  
+  const { data: templates, isLoading, refetch } = trpc.abTesting.getTemplates.useQuery(
+    undefined,
+    { enabled: open }
+  );
+  
+  const createMutation = trpc.abTesting.createTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template created successfully");
+      setIsCreateOpen(false);
+      setNewTemplate({
+        name: "",
+        description: "",
+        category: "headline",
+        variantATemplate: "",
+        variantALabel: "Variant A",
+        variantBTemplate: "",
+        variantBLabel: "Variant B",
+        exampleUseCase: "",
+        tags: [],
+      });
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to create template: ${error.message}`);
+    },
+  });
+  
+  const deleteMutation = trpc.abTesting.deleteTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template deleted");
+      refetch();
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete template: ${error.message}`);
+    },
+  });
+  
+  const useMutation = trpc.abTesting.useTemplate.useMutation({
+    onSuccess: (data) => {
+      toast.success("Template applied! Create your test with the pre-filled content.");
+      if (onUseTemplate && data.template) {
+        onUseTemplate({
+          variantATemplate: data.template.variantATemplate,
+          variantALabel: data.template.variantALabel,
+          variantBTemplate: data.template.variantBTemplate,
+          variantBLabel: data.template.variantBLabel,
+        });
+      }
+      onOpenChange(false);
+    },
+    onError: (error) => {
+      toast.error(`Failed to use template: ${error.message}`);
+    },
+  });
+  
+  const categories = [
+    { value: "all", label: "All Categories" },
+    { value: "headline", label: "Headlines" },
+    { value: "length", label: "Length" },
+    { value: "formatting", label: "Formatting" },
+    { value: "tone", label: "Tone" },
+    { value: "cta", label: "Call-to-Action" },
+    { value: "hashtags", label: "Hashtags" },
+  ];
+  
+  const filteredTemplates = templates?.filter(t => {
+    const matchesCategory = selectedCategory === "all" || t.category === selectedCategory;
+    const matchesSearch = !searchQuery || 
+      t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+    return matchesCategory && matchesSearch;
+  }) || [];
+  
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      headline: "bg-blue-500/10 text-blue-500",
+      length: "bg-green-500/10 text-green-500",
+      formatting: "bg-purple-500/10 text-purple-500",
+      tone: "bg-orange-500/10 text-orange-500",
+      cta: "bg-red-500/10 text-red-500",
+      hashtags: "bg-cyan-500/10 text-cyan-500",
+    };
+    return colors[category] || "bg-muted text-muted-foreground";
+  };
+  
+  const handleAddTag = () => {
+    if (tagInput.trim() && !newTemplate.tags.includes(tagInput.trim())) {
+      setNewTemplate(prev => ({
+        ...prev,
+        tags: [...prev.tags, tagInput.trim()],
+      }));
+      setTagInput("");
+    }
+  };
+  
+  const handleRemoveTag = (tag: string) => {
+    setNewTemplate(prev => ({
+      ...prev,
+      tags: prev.tags.filter(t => t !== tag),
+    }));
+  };
+  
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <FileStack className="w-5 h-5" />
+            A/B Test Templates
+          </DialogTitle>
+          <DialogDescription>
+            Use pre-built templates to quickly create effective A/B tests
+          </DialogDescription>
+        </DialogHeader>
+        
+        {/* Filters */}
+        <div className="flex gap-4 items-center">
+          <div className="flex-1">
+            <Input
+              placeholder="Search templates..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map(cat => (
+                <SelectItem key={cat.value} value={cat.value}>
+                  {cat.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setIsCreateOpen(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Create Template
+          </Button>
+        </div>
+        
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : filteredTemplates.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <FileStack className="w-12 h-12 mx-auto mb-3 opacity-50" />
+            <p>No templates found matching your criteria.</p>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {filteredTemplates.map((template) => (
+              <Card key={template.id} className="relative">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        {template.name}
+                        {template.isSystem && (
+                          <Badge variant="secondary" className="text-xs">System</Badge>
+                        )}
+                      </CardTitle>
+                      <Badge className={getCategoryColor(template.category)}>
+                        {template.category}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => useMutation.mutate({ templateId: template.id })}
+                        disabled={useMutation.isPending}
+                      >
+                        <Copy className="w-4 h-4" />
+                      </Button>
+                      {!template.isSystem && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => {
+                            if (confirm("Delete this template?")) {
+                              deleteMutation.mutate({ templateId: template.id });
+                            }
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {template.description && (
+                    <p className="text-sm text-muted-foreground">{template.description}</p>
+                  )}
+                  
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div className="p-2 bg-muted rounded">
+                      <div className="font-medium text-xs text-muted-foreground mb-1">
+                        {template.variantALabel || "Variant A"}
+                      </div>
+                      <div className="text-xs line-clamp-2">{template.variantATemplate}</div>
+                    </div>
+                    <div className="p-2 bg-muted rounded">
+                      <div className="font-medium text-xs text-muted-foreground mb-1">
+                        {template.variantBLabel || "Variant B"}
+                      </div>
+                      <div className="text-xs line-clamp-2">{template.variantBTemplate}</div>
+                    </div>
+                  </div>
+                  
+                  {template.tags && template.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {template.tags.map((tag, idx) => (
+                        <Badge key={idx} variant="outline" className="text-xs">
+                          <Tag className="w-3 h-3 mr-1" />
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Used {template.usageCount || 0} times</span>
+                    <Button
+                      size="sm"
+                      onClick={() => useMutation.mutate({ templateId: template.id })}
+                      disabled={useMutation.isPending}
+                    >
+                      Use Template
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+        
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+      
+      {/* Create Template Dialog */}
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Custom Template</DialogTitle>
+            <DialogDescription>
+              Create a reusable template for your A/B tests
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Template Name</Label>
+              <Input
+                value={newTemplate.name}
+                onChange={(e) => setNewTemplate(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g., Urgency vs Curiosity"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select 
+                value={newTemplate.category} 
+                onValueChange={(v) => setNewTemplate(prev => ({ ...prev, category: v }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.filter(c => c.value !== "all").map(cat => (
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={newTemplate.description}
+                onChange={(e) => setNewTemplate(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Describe what this template tests..."
+                rows={2}
+              />
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Variant A Label</Label>
+                <Input
+                  value={newTemplate.variantALabel}
+                  onChange={(e) => setNewTemplate(prev => ({ ...prev, variantALabel: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Variant B Label</Label>
+                <Input
+                  value={newTemplate.variantBLabel}
+                  onChange={(e) => setNewTemplate(prev => ({ ...prev, variantBLabel: e.target.value }))}
+                />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Variant A Template</Label>
+              <Textarea
+                value={newTemplate.variantATemplate}
+                onChange={(e) => setNewTemplate(prev => ({ ...prev, variantATemplate: e.target.value }))}
+                placeholder="Template for variant A..."
+                rows={2}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Variant B Template</Label>
+              <Textarea
+                value={newTemplate.variantBTemplate}
+                onChange={(e) => setNewTemplate(prev => ({ ...prev, variantBTemplate: e.target.value }))}
+                placeholder="Template for variant B..."
+                rows={2}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Tags</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  placeholder="Add a tag..."
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
+                />
+                <Button type="button" variant="outline" onClick={handleAddTag}>
+                  Add
+                </Button>
+              </div>
+              {newTemplate.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {newTemplate.tags.map((tag, idx) => (
+                    <Badge key={idx} variant="secondary" className="cursor-pointer" onClick={() => handleRemoveTag(tag)}>
+                      {tag} ×
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => createMutation.mutate(newTemplate)}
+              disabled={!newTemplate.name || !newTemplate.variantATemplate || !newTemplate.variantBTemplate || createMutation.isPending}
+            >
+              {createMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : null}
+              Create Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

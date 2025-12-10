@@ -43,7 +43,8 @@ import {
   Eye,
   Pause,
   Play,
-  Calendar
+  Calendar,
+  GripVertical
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -429,6 +430,10 @@ function EmailDigestsTab() {
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
+  const [sectionOrder, setSectionOrder] = useState<string[]>([
+    "analytics", "goalProgress", "topPosts", "platformComparison", "scheduledPosts"
+  ]);
+  const [draggedSection, setDraggedSection] = useState<string | null>(null);
   
   // Fetch current preferences
   const { data: preferences, isLoading } = trpc.settings.getDigestPreferences.useQuery();
@@ -476,6 +481,14 @@ function EmailDigestsTab() {
       setIncludeTopPosts(preferences.includeTopPosts ?? true);
       setIncludePlatformComparison(preferences.includePlatformComparison ?? true);
       setIncludeScheduledPosts(preferences.includeScheduledPosts ?? true);
+      if (preferences.sectionOrder) {
+        try {
+          const order = typeof preferences.sectionOrder === 'string' 
+            ? JSON.parse(preferences.sectionOrder) 
+            : preferences.sectionOrder;
+          if (Array.isArray(order)) setSectionOrder(order);
+        } catch (e) { /* ignore parse errors */ }
+      }
     }
   }, [preferences]);
   
@@ -491,8 +504,41 @@ function EmailDigestsTab() {
       includeGoalProgress,
       includeTopPosts,
       includePlatformComparison,
-      includeScheduledPosts
+      includeScheduledPosts,
+      sectionOrder
     });
+  };
+
+  // Section configuration
+  const sectionConfig: Record<string, { label: string; enabled: boolean; setEnabled: (v: boolean) => void }> = {
+    analytics: { label: "Analytics Summary", enabled: includeAnalytics, setEnabled: setIncludeAnalytics },
+    goalProgress: { label: "Goal Progress", enabled: includeGoalProgress, setEnabled: setIncludeGoalProgress },
+    topPosts: { label: "Top Performing Posts", enabled: includeTopPosts, setEnabled: setIncludeTopPosts },
+    platformComparison: { label: "Platform Comparison", enabled: includePlatformComparison, setEnabled: setIncludePlatformComparison },
+    scheduledPosts: { label: "Scheduled Posts", enabled: includeScheduledPosts, setEnabled: setIncludeScheduledPosts },
+  };
+
+  const handleDragStart = (sectionKey: string) => {
+    setDraggedSection(sectionKey);
+  };
+
+  const handleDragOver = (e: React.DragEvent, targetKey: string) => {
+    e.preventDefault();
+    if (!draggedSection || draggedSection === targetKey) return;
+    
+    const newOrder = [...sectionOrder];
+    const draggedIndex = newOrder.indexOf(draggedSection);
+    const targetIndex = newOrder.indexOf(targetKey);
+    
+    if (draggedIndex !== -1 && targetIndex !== -1) {
+      newOrder.splice(draggedIndex, 1);
+      newOrder.splice(targetIndex, 0, draggedSection);
+      setSectionOrder(newOrder);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedSection(null);
   };
   
   const handlePreview = async () => {
@@ -742,83 +788,44 @@ function EmailDigestsTab() {
             
             <Separator />
             
-            {/* Content Sections */}
+            {/* Content Sections with Drag-and-Drop Reordering */}
             <div className="space-y-4">
-              <h3 className="font-medium">Report Sections</h3>
-              <p className="text-sm text-muted-foreground">
-                Choose which sections to include in your digest
-              </p>
+              <div>
+                <h3 className="font-medium">Report Sections</h3>
+                <p className="text-sm text-muted-foreground">
+                  Drag to reorder sections. Toggle to show/hide in your digest.
+                </p>
+              </div>
               
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="include-analytics">Analytics Summary</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Overall performance metrics and trends
-                    </p>
-                  </div>
-                  <Switch
-                    id="include-analytics"
-                    checked={includeAnalytics}
-                    onCheckedChange={setIncludeAnalytics}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="include-goals">Goal Progress</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Progress toward your platform goals
-                    </p>
-                  </div>
-                  <Switch
-                    id="include-goals"
-                    checked={includeGoalProgress}
-                    onCheckedChange={setIncludeGoalProgress}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="include-top-posts">Top Performing Posts</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Your best performing content this period
-                    </p>
-                  </div>
-                  <Switch
-                    id="include-top-posts"
-                    checked={includeTopPosts}
-                    onCheckedChange={setIncludeTopPosts}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="include-comparison">Platform Comparison</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Side-by-side performance across platforms
-                    </p>
-                  </div>
-                  <Switch
-                    id="include-comparison"
-                    checked={includePlatformComparison}
-                    onCheckedChange={setIncludePlatformComparison}
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label htmlFor="include-scheduled">Upcoming Scheduled Posts</Label>
-                    <p className="text-sm text-muted-foreground">
-                      Preview of posts scheduled for the next period
-                    </p>
-                  </div>
-                  <Switch
-                    id="include-scheduled"
-                    checked={includeScheduledPosts}
-                    onCheckedChange={setIncludeScheduledPosts}
-                  />
-                </div>
+              <div className="space-y-2">
+                {sectionOrder.map((sectionKey) => {
+                  const config = sectionConfig[sectionKey];
+                  if (!config) return null;
+                  
+                  return (
+                    <div
+                      key={sectionKey}
+                      draggable
+                      onDragStart={() => handleDragStart(sectionKey)}
+                      onDragOver={(e) => handleDragOver(e, sectionKey)}
+                      onDragEnd={handleDragEnd}
+                      className={`flex items-center gap-3 p-3 rounded-lg border bg-card transition-all ${
+                        draggedSection === sectionKey ? 'opacity-50 border-primary' : 'hover:border-primary/50'
+                      }`}
+                    >
+                      <div className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground">
+                        <GripVertical className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1">
+                        <Label className="cursor-pointer">{config.label}</Label>
+                      </div>
+                      <Switch
+                        checked={config.enabled}
+                        onCheckedChange={config.setEnabled}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
             

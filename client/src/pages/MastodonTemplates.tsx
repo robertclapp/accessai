@@ -211,7 +211,22 @@ export default function MastodonTemplates() {
   }) || [];
 
   const getCategoryInfo = (category: string | null) => {
-    return CATEGORIES.find(c => c.value === category) || CATEGORIES[CATEGORIES.length - 1];
+    // First check custom categories
+    const customCat = customCategories?.find(c => c.name.toLowerCase() === category?.toLowerCase());
+    if (customCat) {
+      return {
+        value: customCat.name.toLowerCase(),
+        label: customCat.name,
+        color: '', // Will use inline style instead
+        hexColor: customCat.color,
+      };
+    }
+    // Fall back to preset categories
+    const preset = CATEGORIES.find(c => c.value === category);
+    if (preset) {
+      return { ...preset, hexColor: null };
+    }
+    return { ...CATEGORIES[CATEGORIES.length - 1], hexColor: null };
   };
 
   return (
@@ -404,7 +419,11 @@ export default function MastodonTemplates() {
                       <div>
                         <CardTitle className="text-lg">{template.name}</CardTitle>
                         <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="secondary" className={`${categoryInfo.color} text-white`}>
+                          <Badge 
+                            variant="secondary" 
+                            className={categoryInfo.hexColor ? 'text-white' : `${categoryInfo.color} text-white`}
+                            style={categoryInfo.hexColor ? { backgroundColor: categoryInfo.hexColor } : undefined}
+                          >
                             {categoryInfo.label}
                           </Badge>
                           {template.isSystem && (

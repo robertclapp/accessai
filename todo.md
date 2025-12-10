@@ -580,3 +580,26 @@
 - [x] Add export button to comparison dialog
 - [x] Handle PDF download in browser
 - [x] Write tests for comparison PDF export (422 tests passing)
+
+## Custom Color Picker for Categories (New)
+- [x] Replace preset color options with full color picker (already implemented with type="color" input)
+- [x] Add color picker component to category management dialog (already implemented)
+- [x] Validate and store hex color values (already implemented)
+- [x] Display custom colors in category list and template cards (enhance display)
+- [x] Write tests for color picker functionality (455 tests passing)
+
+## Digest Content Customization (New)
+- [x] Add section order and visibility fields to digest preferences
+- [x] Create section reordering UI with drag-and-drop
+- [x] Add toggle switches to show/hide sections
+- [x] Update digest email generation to respect customization
+- [x] Write tests for digest customization (455 tests passing)
+
+## A/B Test Templates (New)
+- [x] Create ab_test_templates table in schema
+- [x] Add database functions for template CRUD
+- [x] Create template management endpoints in router
+- [x] Build templates UI with system and custom templates
+- [x] Add template usage tracking
+- [x] Seed system templates (question vs statement, short vs long, etc.)
+- [x] Write tests for A/B test templates (455 tests passing)

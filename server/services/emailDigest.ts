@@ -147,14 +147,21 @@ export async function updateDigestPreferences(
     includeTopPosts: boolean;
     includePlatformComparison: boolean;
     includeScheduledPosts: boolean;
+    sectionOrder: string[];
   }>
 ) {
   const database = await getDb();
   if (!database) return false;
 
+  // Convert sectionOrder array to JSON string for storage
+  const dbUpdates: any = { ...updates };
+  if (updates.sectionOrder) {
+    dbUpdates.sectionOrder = JSON.stringify(updates.sectionOrder);
+  }
+
   await database
     .update(emailDigestPreferences)
-    .set(updates)
+    .set(dbUpdates)
     .where(eq(emailDigestPreferences.userId, userId));
 
   return true;

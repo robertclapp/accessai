@@ -2,6 +2,7 @@ import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { invokeLLM } from "./_core/llm";
 import { transcribeAudio } from "./_core/voiceTranscription";
@@ -11,6 +12,7 @@ import { notifyOwner } from "./_core/notification";
 // import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as db from "./db";
+import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates } from "./db";
 import type { InsertPost } from "../drizzle/schema";
 import {
   generateVerificationToken,
@@ -1449,6 +1451,7 @@ ${aiContext}`
         includeTopPosts: z.boolean().optional(),
         includePlatformComparison: z.boolean().optional(),
         includeScheduledPosts: z.boolean().optional(),
+        sectionOrder: z.array(z.string()).optional(),
       }))
       .mutation(async ({ ctx, input }) => {
         await updateDigestPreferences(ctx.user.id, input);
@@ -2548,6 +2551,85 @@ ${aiContext}`
         
         const html = generateComparisonHtml(pdfData);
         return { html, comparison };
+      }),
+    
+    // ============================================
+    // A/B TEST TEMPLATES
+    // ============================================
+    
+    /** Get all A/B test templates (system + user's custom) */
+    getTemplates: protectedProcedure
+      .query(async ({ ctx }) => {
+        // Seed system templates if needed
+        await seedSystemABTestTemplates();
+        return await getABTestTemplates(ctx.user.id);
+      }),
+    
+    /** Get a single template by ID */
+    getTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await getABTestTemplate(input.templateId, ctx.user.id);
+      }),
+    
+    /** Create a custom template */
+    createTemplate: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        category: z.string().min(1).max(100),
+        variantATemplate: z.string().min(1),
+        variantALabel: z.string().max(100).optional(),
+        variantBTemplate: z.string().min(1),
+        variantBLabel: z.string().max(100).optional(),
+        platforms: z.array(z.string()).optional(),
+        exampleUseCase: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const templateId = await createABTestTemplate(ctx.user.id, input);
+        return { templateId };
+      }),
+    
+    /** Update a custom template */
+    updateTemplate: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        name: z.string().min(1).max(255).optional(),
+        description: z.string().optional(),
+        category: z.string().min(1).max(100).optional(),
+        variantATemplate: z.string().min(1).optional(),
+        variantALabel: z.string().max(100).optional(),
+        variantBTemplate: z.string().min(1).optional(),
+        variantBLabel: z.string().max(100).optional(),
+        platforms: z.array(z.string()).optional(),
+        exampleUseCase: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { templateId, ...data } = input;
+        await updateABTestTemplate(templateId, ctx.user.id, data);
+        return { success: true };
+      }),
+    
+    /** Delete a custom template */
+    deleteTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await deleteABTestTemplate(input.templateId, ctx.user.id);
+        return { success: true };
+      }),
+    
+    /** Use a template to create a new test (increments usage count) */
+    useTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const template = await getABTestTemplate(input.templateId, ctx.user.id);
+        if (!template) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Template not found" });
+        }
+        await incrementABTestTemplateUsage(input.templateId);
+        return { template };
       }),
   }),
 

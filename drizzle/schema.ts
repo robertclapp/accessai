@@ -681,6 +681,9 @@ export const emailDigestPreferences = mysqlTable("email_digest_preferences", {
   /** When the last pause reminder was sent */
   pauseReminderSentAt: timestamp("pauseReminderSentAt"),
   
+  /** Custom section order (JSON array of section keys) */
+  sectionOrder: text("sectionOrder"), // JSON: ["analytics", "goalProgress", "topPosts", "platformComparison", "scheduledPosts"]
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -926,3 +929,57 @@ export const templateCategories = mysqlTable("template_categories", {
 
 export type TemplateCategory = typeof templateCategories.$inferSelect;
 export type InsertTemplateCategory = typeof templateCategories.$inferInsert;
+
+
+/**
+ * A/B Test Templates - Reusable templates for common content variations.
+ * Users can create tests from these templates to save time.
+ */
+export const abTestTemplates = mysqlTable("ab_test_templates", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** Template name */
+  name: varchar("name", { length: 255 }).notNull(),
+  
+  /** Template description */
+  description: text("description"),
+  
+  /** Category of variation (e.g., "headline", "cta", "tone") */
+  category: varchar("category", { length: 100 }).notNull(),
+  
+  /** Whether this is a system template (not editable by users) */
+  isSystem: boolean("isSystem").default(false),
+  
+  /** User who created this template (null for system templates) */
+  userId: int("userId"),
+  
+  /** Target platform(s) - null means all platforms */
+  platforms: json("platforms").$type<string[]>(),
+  
+  /** Variant A content template */
+  variantATemplate: text("variantATemplate").notNull(),
+  
+  /** Variant A label/name */
+  variantALabel: varchar("variantALabel", { length: 100 }).default("Variant A"),
+  
+  /** Variant B content template */
+  variantBTemplate: text("variantBTemplate").notNull(),
+  
+  /** Variant B label/name */
+  variantBLabel: varchar("variantBLabel", { length: 100 }).default("Variant B"),
+  
+  /** Example use case */
+  exampleUseCase: text("exampleUseCase"),
+  
+  /** Tags for filtering */
+  tags: json("tags").$type<string[]>(),
+  
+  /** Usage count (how many tests created from this template) */
+  usageCount: int("usageCount").default(0),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ABTestTemplate = typeof abTestTemplates.$inferSelect;
+export type InsertABTestTemplate = typeof abTestTemplates.$inferInsert;

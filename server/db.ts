@@ -28,7 +28,8 @@ import {
   cwPresets, InsertCWPreset, CWPreset,
   mastodonTemplates, InsertMastodonTemplate, MastodonTemplate,
   digestDeliveryTracking, InsertDigestDeliveryTracking, DigestDeliveryTracking,
-  templateCategories, InsertTemplateCategory, TemplateCategory
+  templateCategories,
+  abTestTemplates, InsertTemplateCategory, TemplateCategory
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -3068,5 +3069,280 @@ export async function reorderTemplateCategories(
           eq(templateCategories.userId, userId)
         )
       );
+  }
+}
+
+
+// ============================================
+// A/B TEST TEMPLATES
+// ============================================
+
+/**
+ * Get all A/B test templates (system + user's custom)
+ */
+export async function getABTestTemplates(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return await db
+    .select()
+    .from(abTestTemplates)
+    .where(
+      or(
+        eq(abTestTemplates.isSystem, true),
+        eq(abTestTemplates.userId, userId)
+      )
+    )
+    .orderBy(desc(abTestTemplates.usageCount));
+}
+
+/**
+ * Get a single A/B test template by ID
+ */
+export async function getABTestTemplate(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [template] = await db
+    .select()
+    .from(abTestTemplates)
+    .where(
+      and(
+        eq(abTestTemplates.id, id),
+        or(
+          eq(abTestTemplates.isSystem, true),
+          eq(abTestTemplates.userId, userId)
+        )
+      )
+    );
+  
+  return template || null;
+}
+
+/**
+ * Create a custom A/B test template
+ */
+export async function createABTestTemplate(
+  userId: number,
+  data: {
+    name: string;
+    description?: string;
+    category: string;
+    variantATemplate: string;
+    variantALabel?: string;
+    variantBTemplate: string;
+    variantBLabel?: string;
+    platforms?: string[];
+    exampleUseCase?: string;
+    tags?: string[];
+  }
+) {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [result] = await db.insert(abTestTemplates).values({
+    userId,
+    name: data.name,
+    description: data.description,
+    category: data.category,
+    variantATemplate: data.variantATemplate,
+    variantALabel: data.variantALabel || "Variant A",
+    variantBTemplate: data.variantBTemplate,
+    variantBLabel: data.variantBLabel || "Variant B",
+    platforms: data.platforms,
+    exampleUseCase: data.exampleUseCase,
+    tags: data.tags,
+    isSystem: false,
+  });
+  
+  return result.insertId;
+}
+
+/**
+ * Update a custom A/B test template
+ */
+export async function updateABTestTemplate(
+  id: number,
+  userId: number,
+  data: Partial<{
+    name: string;
+    description: string;
+    category: string;
+    variantATemplate: string;
+    variantALabel: string;
+    variantBTemplate: string;
+    variantBLabel: string;
+    platforms: string[];
+    exampleUseCase: string;
+    tags: string[];
+  }>
+) {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db
+    .update(abTestTemplates)
+    .set(data)
+    .where(
+      and(
+        eq(abTestTemplates.id, id),
+        eq(abTestTemplates.userId, userId),
+        eq(abTestTemplates.isSystem, false) // Can't edit system templates
+      )
+    );
+  
+  return true;
+}
+
+/**
+ * Delete a custom A/B test template
+ */
+export async function deleteABTestTemplate(id: number, userId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db
+    .delete(abTestTemplates)
+    .where(
+      and(
+        eq(abTestTemplates.id, id),
+        eq(abTestTemplates.userId, userId),
+        eq(abTestTemplates.isSystem, false) // Can't delete system templates
+      )
+    );
+  
+  return true;
+}
+
+/**
+ * Increment usage count for an A/B test template
+ */
+export async function incrementABTestTemplateUsage(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db
+    .update(abTestTemplates)
+    .set({ usageCount: sql`${abTestTemplates.usageCount} + 1` })
+    .where(eq(abTestTemplates.id, id));
+}
+
+/**
+ * Seed system A/B test templates (run once during setup)
+ */
+export async function seedSystemABTestTemplates() {
+  const db = await getDb();
+  if (!db) return;
+  
+  const systemTemplates = [
+    {
+      name: "Question vs Statement Headline",
+      description: "Test whether a question or statement headline drives more engagement",
+      category: "headline",
+      variantATemplate: "How to [achieve goal] in [timeframe]",
+      variantALabel: "Question",
+      variantBTemplate: "[Number] Ways to [achieve goal] Fast",
+      variantBLabel: "Statement",
+      exampleUseCase: "Blog post promotion, thought leadership content",
+      tags: ["headline", "engagement", "copywriting"],
+      isSystem: true,
+    },
+    {
+      name: "Short vs Long Form",
+      description: "Compare concise posts against detailed explanations",
+      category: "length",
+      variantATemplate: "[Key insight in 1-2 sentences]",
+      variantALabel: "Short (< 100 chars)",
+      variantBTemplate: "[Detailed explanation with context, examples, and call-to-action spanning 3-4 paragraphs]",
+      variantBLabel: "Long (300+ chars)",
+      exampleUseCase: "Finding optimal post length for your audience",
+      tags: ["length", "format", "engagement"],
+      isSystem: true,
+    },
+    {
+      name: "Emoji vs No Emoji",
+      description: "Test whether emojis increase or decrease engagement",
+      category: "formatting",
+      variantATemplate: "🚀 [Your message] 💡",
+      variantALabel: "With Emojis",
+      variantBTemplate: "[Your message - no emojis]",
+      variantBLabel: "No Emojis",
+      exampleUseCase: "Determining if your audience responds to emojis",
+      tags: ["emoji", "formatting", "tone"],
+      isSystem: true,
+    },
+    {
+      name: "Personal Story vs Data-Driven",
+      description: "Compare storytelling approach against statistics-based content",
+      category: "tone",
+      variantATemplate: "When I first [personal experience]... Here's what I learned:",
+      variantALabel: "Personal Story",
+      variantBTemplate: "According to [source], [statistic]. Here's what this means:",
+      variantBLabel: "Data-Driven",
+      exampleUseCase: "Testing emotional vs logical appeal",
+      tags: ["storytelling", "data", "tone"],
+      isSystem: true,
+    },
+    {
+      name: "Direct CTA vs Soft CTA",
+      description: "Test strong call-to-action against subtle invitation",
+      category: "cta",
+      variantATemplate: "[Content] → Click the link to [action] NOW!",
+      variantALabel: "Direct CTA",
+      variantBTemplate: "[Content] If this resonates, you might enjoy [resource]",
+      variantBLabel: "Soft CTA",
+      exampleUseCase: "Optimizing conversion without being pushy",
+      tags: ["cta", "conversion", "engagement"],
+      isSystem: true,
+    },
+    {
+      name: "List Format vs Paragraph",
+      description: "Compare bullet point lists against flowing paragraphs",
+      category: "formatting",
+      variantATemplate: "Key takeaways:\\n• Point 1\\n• Point 2\\n• Point 3",
+      variantALabel: "List Format",
+      variantBTemplate: "Here's the thing about [topic]. First, [point 1]. Additionally, [point 2]. Finally, [point 3].",
+      variantBLabel: "Paragraph",
+      exampleUseCase: "Testing readability and scan-ability",
+      tags: ["formatting", "readability", "structure"],
+      isSystem: true,
+    },
+    {
+      name: "Controversial vs Safe Take",
+      description: "Test bold opinions against conventional wisdom",
+      category: "tone",
+      variantATemplate: "Unpopular opinion: [controversial stance]",
+      variantALabel: "Controversial",
+      variantBTemplate: "Here's a reminder: [widely accepted advice]",
+      variantBLabel: "Safe Take",
+      exampleUseCase: "Finding the right balance of boldness",
+      tags: ["controversy", "opinion", "engagement"],
+      isSystem: true,
+    },
+    {
+      name: "Hashtag Heavy vs Minimal",
+      description: "Compare posts with many hashtags against few or none",
+      category: "hashtags",
+      variantATemplate: "[Content] #topic1 #topic2 #topic3 #topic4 #topic5",
+      variantALabel: "5+ Hashtags",
+      variantBTemplate: "[Content] #maintopic",
+      variantBLabel: "1 Hashtag",
+      exampleUseCase: "Optimizing discoverability vs aesthetics",
+      tags: ["hashtags", "reach", "discovery"],
+      isSystem: true,
+    },
+  ];
+  
+  // Check if system templates already exist
+  const existing = await db
+    .select({ id: abTestTemplates.id })
+    .from(abTestTemplates)
+    .where(eq(abTestTemplates.isSystem, true))
+    .limit(1);
+  
+  if (existing.length === 0) {
+    for (const template of systemTemplates) {
+      await db.insert(abTestTemplates).values(template);
+    }
   }
 }

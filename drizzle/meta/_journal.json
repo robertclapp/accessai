@@ -155,6 +155,20 @@
       "when": 1765407954794,
       "tag": "0021_normal_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "5",
+      "when": 1765409875466,
+      "tag": "0022_good_raza",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1765410181190,
+      "tag": "0023_lyrical_ikaris",
+      "breakpoints": true
     }
   ]
 }
