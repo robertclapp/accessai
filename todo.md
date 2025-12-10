@@ -393,3 +393,29 @@
 - [x] Update settings page for Mastodon account connection
 - [x] Add Mastodon to all platform constants
 - [x] Write tests for Mastodon integration (197 tests passing)
+
+
+## Mastodon Content Warning Support (New)
+- [x] Add contentWarning field to posts table
+- [x] Update Mastodon adapter to include spoiler_text parameter
+- [x] Add CW input field to PostBuilder when Mastodon is selected
+- [x] Add CW toggle/input to post creation form
+- [x] Display CW indicator on post previews
+- [x] Write tests for CW functionality (211 tests passing)
+
+## Scheduled Digest Preview (New)
+- [x] Calculate next digest send time based on preferences
+- [x] Display next send date/time in Email Digests settings
+- [x] Show countdown to next digest
+- [x] Handle timezone display for user (local timezone)
+- [x] Update preview when preferences change
+- [x] Write tests for preview calculation (211 tests passing)
+
+## Bulk A/B Test Creation (New)
+- [x] Allow selecting multiple platforms for A/B test
+- [x] Create separate test instances per platform
+- [x] Add bulk test toggle in create dialog
+- [x] Add multi-platform selector UI with checkboxes
+- [x] Show platform count in create button
+- [x] Preserve variant content across platforms
+- [x] Write tests for bulk A/B test functionality (211 tests passing)

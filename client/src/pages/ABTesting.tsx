@@ -68,6 +68,8 @@ export default function ABTesting() {
     name: "",
     description: "",
     platform: "linkedin" as Platform,
+    platforms: ["linkedin"] as Platform[], // For bulk testing
+    isBulkTest: false,
     durationHours: 48,
     variants: [
       { label: "A", content: "", hashtags: [] as string[] },
@@ -94,6 +96,8 @@ export default function ABTesting() {
         name: "",
         description: "",
         platform: "linkedin",
+        platforms: ["linkedin"],
+        isBulkTest: false,
         durationHours: 48,
         variants: [
           { label: "A", content: "", hashtags: [] },
@@ -200,7 +204,7 @@ export default function ABTesting() {
     setNewTest({ ...newTest, variants: updated });
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!newTest.name.trim()) {
       toast.error("Please enter a test name");
       return;
@@ -209,7 +213,51 @@ export default function ABTesting() {
       toast.error("All variants must have content");
       return;
     }
-    createTest.mutate(newTest);
+    
+    if (newTest.isBulkTest && newTest.platforms.length > 1) {
+      // Create tests for each selected platform
+      let successCount = 0;
+      for (const platform of newTest.platforms) {
+        try {
+          await createTest.mutateAsync({
+            name: `${newTest.name} (${PLATFORM_DISPLAY_NAMES[platform]})`,
+            description: newTest.description,
+            platform,
+            durationHours: newTest.durationHours,
+            variants: newTest.variants,
+          });
+          successCount++;
+        } catch {
+          // Continue with other platforms
+        }
+      }
+      if (successCount > 0) {
+        toast.success(`Created ${successCount} A/B tests across platforms`);
+        setIsCreateOpen(false);
+        setNewTest({
+          name: "",
+          description: "",
+          platform: "linkedin",
+          platforms: ["linkedin"],
+          isBulkTest: false,
+          durationHours: 48,
+          variants: [
+            { label: "A", content: "", hashtags: [] },
+            { label: "B", content: "", hashtags: [] },
+          ],
+        });
+        utils.abTesting.list.invalidate();
+      }
+    } else {
+      // Single platform test
+      createTest.mutate({
+        name: newTest.name,
+        description: newTest.description,
+        platform: newTest.platform,
+        durationHours: newTest.durationHours,
+        variants: newTest.variants,
+      });
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -257,16 +305,81 @@ export default function ABTesting() {
               </DialogHeader>
               
               <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="test-name">Test Name</Label>
-                    <Input
-                      id="test-name"
-                      placeholder="e.g., Holiday promotion test"
-                      value={newTest.name}
-                      onChange={(e) => setNewTest({ ...newTest, name: e.target.value })}
-                    />
+                <div className="space-y-2">
+                  <Label htmlFor="test-name">Test Name</Label>
+                  <Input
+                    id="test-name"
+                    placeholder="e.g., Holiday promotion test"
+                    value={newTest.name}
+                    onChange={(e) => setNewTest({ ...newTest, name: e.target.value })}
+                  />
+                </div>
+                
+                {/* Bulk Test Toggle */}
+                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="bulk-test" className="text-base font-medium">Bulk Test Across Platforms</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Test the same content variants on multiple platforms simultaneously
+                    </p>
                   </div>
+                  <input
+                    type="checkbox"
+                    id="bulk-test"
+                    checked={newTest.isBulkTest}
+                    onChange={(e) => setNewTest({ 
+                      ...newTest, 
+                      isBulkTest: e.target.checked,
+                      platforms: e.target.checked ? [newTest.platform] : ["linkedin"]
+                    })}
+                    className="h-5 w-5 rounded border-gray-300"
+                  />
+                </div>
+                
+                {/* Platform Selection */}
+                {newTest.isBulkTest ? (
+                  <div className="space-y-2">
+                    <Label>Select Platforms ({newTest.platforms.length} selected)</Label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(Object.keys(platformConfig) as Platform[]).map((p) => (
+                        <label
+                          key={p}
+                          className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            newTest.platforms.includes(p)
+                              ? "border-primary bg-primary/10"
+                              : "border-border hover:border-muted-foreground"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={newTest.platforms.includes(p)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setNewTest({ ...newTest, platforms: [...newTest.platforms, p] });
+                              } else {
+                                const updated = newTest.platforms.filter((x) => x !== p);
+                                if (updated.length > 0) {
+                                  setNewTest({ ...newTest, platforms: updated });
+                                }
+                              }
+                            }}
+                            className="sr-only"
+                          />
+                          <span className={`w-6 h-6 rounded flex items-center justify-center text-white text-xs ${platformConfig[p].color}`}>
+                            {platformConfig[p].icon}
+                          </span>
+                          <span className="font-medium">{PLATFORM_DISPLAY_NAMES[p]}</span>
+                          {newTest.platforms.includes(p) && (
+                            <CheckCircle className="w-4 h-4 ml-auto text-primary" />
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      A separate test will be created for each platform with the same variants
+                    </p>
+                  </div>
+                ) : (
                   <div className="space-y-2">
                     <Label htmlFor="platform">Platform</Label>
                     <Select
@@ -290,7 +403,7 @@ export default function ABTesting() {
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="description">Description (optional)</Label>
@@ -370,7 +483,9 @@ export default function ABTesting() {
                 </Button>
                 <Button onClick={handleCreate} disabled={createTest.isPending}>
                   {createTest.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                  Create Test
+                  {newTest.isBulkTest && newTest.platforms.length > 1
+                    ? `Create ${newTest.platforms.length} Tests`
+                    : "Create Test"}
                 </Button>
               </DialogFooter>
             </DialogContent>

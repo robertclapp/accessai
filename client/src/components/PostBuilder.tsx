@@ -78,6 +78,7 @@ export function PostBuilder({
   const [platform, setPlatform] = useState<Platform>(initialPlatform);
   const [hashtags, setHashtags] = useState<string[]>([]);
   const [hashtagInput, setHashtagInput] = useState("");
+  const [contentWarning, setContentWarning] = useState(""); // Mastodon CW/spoiler text
   
   // UI state
   const [showVoiceInput, setShowVoiceInput] = useState(false);
@@ -227,7 +228,8 @@ export function PostBuilder({
       altTexts: generatedImageUrl && generatedAltText 
         ? { [generatedImageUrl]: generatedAltText } 
         : undefined,
-      templateId
+      templateId,
+      contentWarning: platform === "mastodon" && contentWarning.trim() ? contentWarning.trim() : undefined
     });
   };
 
@@ -394,6 +396,25 @@ export function PostBuilder({
                 </div>
               )}
             </div>
+            
+            {/* Content Warning (Mastodon only) */}
+            {platform === "mastodon" && (
+              <div>
+                <Label htmlFor="content-warning">Content Warning (CW)</Label>
+                <Input
+                  id="content-warning"
+                  placeholder="Add a content warning / spoiler tag (optional)"
+                  value={contentWarning}
+                  onChange={(e) => setContentWarning(e.target.value)}
+                  maxLength={500}
+                  className="mt-1"
+                  aria-describedby="cw-hint"
+                />
+                <p id="cw-hint" className="text-xs text-muted-foreground mt-1">
+                  Content warnings hide your post behind a clickable warning. Common uses: spoilers, sensitive topics, long posts.
+                </p>
+              </div>
+            )}
             
             {/* Options */}
             <div className="flex flex-wrap gap-4">

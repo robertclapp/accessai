@@ -26,6 +26,8 @@ export interface SocialPost {
   altTexts?: Record<string, string>;
   hashtags?: string[];
   scheduledAt?: Date;
+  /** Content warning / spoiler text (primarily for Mastodon) */
+  contentWarning?: string;
 }
 
 export interface PostResult {

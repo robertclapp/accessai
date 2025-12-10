@@ -162,6 +162,11 @@ export class MastodonAdapter implements SocialAdapter {
       formData.append("status", formattedContent);
       formData.append("visibility", "public");
       
+      // Add content warning (spoiler text) if provided
+      if (content.contentWarning && content.contentWarning.trim()) {
+        formData.append("spoiler_text", content.contentWarning.trim());
+      }
+      
       // Upload media if present
       if (content.mediaUrls && content.mediaUrls.length > 0) {
         const mediaIds = await this.uploadMedia(content.mediaUrls, tokens.accessToken);

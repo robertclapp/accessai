@@ -668,7 +668,8 @@ ${aiContext}`
         altTexts: z.record(z.string(), z.string()).optional(),
         hashtags: z.array(z.string()).optional(),
         templateId: z.number().optional(),
-        teamId: z.number().optional()
+        teamId: z.number().optional(),
+        contentWarning: z.string().max(500).optional() // Mastodon CW/spoiler text
       }))
       .mutation(async ({ ctx, input }) => {
         // Run accessibility check
@@ -686,6 +687,7 @@ ${aiContext}`
           altTexts: input.altTexts as Record<string, string> | undefined,
           hashtags: input.hashtags,
           templateId: input.templateId,
+          contentWarning: input.contentWarning,
           accessibilityScore: accessibilityResult.score,
           accessibilityIssues: accessibilityResult.issues
         });

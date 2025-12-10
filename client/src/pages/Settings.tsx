@@ -192,6 +192,62 @@ function EmailDigestsTab() {
     label: `${i.toString().padStart(2, "0")}:00 UTC`
   }));
   
+  // Calculate next digest send time
+  const calculateNextSendTime = (): Date | null => {
+    if (!digestEnabled) return null;
+    
+    const now = new Date();
+    const nextSend = new Date();
+    
+    // Set the hour in UTC
+    nextSend.setUTCHours(hourUtc, 0, 0, 0);
+    
+    if (frequency === "weekly") {
+      // Find next occurrence of the selected day
+      const currentDay = now.getUTCDay();
+      let daysUntilNext = dayOfWeek - currentDay;
+      
+      // If the day has passed this week, or it's today but the time has passed
+      if (daysUntilNext < 0 || (daysUntilNext === 0 && now > nextSend)) {
+        daysUntilNext += 7;
+      }
+      
+      nextSend.setUTCDate(now.getUTCDate() + daysUntilNext);
+    } else {
+      // Monthly: find next occurrence of the selected day of month
+      nextSend.setUTCDate(dayOfMonth);
+      
+      // If the day has passed this month, move to next month
+      if (nextSend <= now) {
+        nextSend.setUTCMonth(nextSend.getUTCMonth() + 1);
+      }
+    }
+    
+    return nextSend;
+  };
+  
+  const nextSendTime = calculateNextSendTime();
+  
+  // Format countdown
+  const formatCountdown = (targetDate: Date): string => {
+    const now = new Date();
+    const diff = targetDate.getTime() - now.getTime();
+    
+    if (diff <= 0) return "Soon";
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (days > 0) {
+      return `${days} day${days > 1 ? "s" : ""}, ${hours} hour${hours !== 1 ? "s" : ""}`;
+    } else if (hours > 0) {
+      return `${hours} hour${hours !== 1 ? "s" : ""}, ${minutes} minute${minutes !== 1 ? "s" : ""}`;
+    } else {
+      return `${minutes} minute${minutes !== 1 ? "s" : ""}`;
+    }
+  };
+  
   if (isLoading) {
     return (
       <Card>
@@ -301,6 +357,37 @@ function EmailDigestsTab() {
                   </Select>
                 </div>
               </div>
+              
+              {/* Next Send Time Preview */}
+              {nextSendTime && (
+                <div className="bg-primary/10 border border-primary/20 rounded-lg p-4 mt-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Mail className="h-5 w-5 text-primary" />
+                    <span className="font-medium text-primary">Next Digest</span>
+                  </div>
+                  <p className="text-sm">
+                    <span className="font-medium">
+                      {nextSendTime.toLocaleDateString(undefined, { 
+                        weekday: 'long', 
+                        year: 'numeric', 
+                        month: 'long', 
+                        day: 'numeric' 
+                      })}
+                    </span>
+                    {' at '}
+                    <span className="font-medium">
+                      {nextSendTime.toLocaleTimeString(undefined, { 
+                        hour: '2-digit', 
+                        minute: '2-digit',
+                        timeZoneName: 'short'
+                      })}
+                    </span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    In approximately {formatCountdown(nextSendTime)}
+                  </p>
+                </div>
+              )}
             </div>
             
             <Separator />

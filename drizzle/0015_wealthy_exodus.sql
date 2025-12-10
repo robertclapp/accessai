@@ -1,0 +1,1 @@
+ALTER TABLE `posts` ADD `contentWarning` varchar(500);
