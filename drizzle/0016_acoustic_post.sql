@@ -1,0 +1,1 @@
+ALTER TABLE `ab_tests` ADD `bulkTestGroupId` varchar(36);

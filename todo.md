@@ -419,3 +419,30 @@
 - [x] Show platform count in create button
 - [x] Preserve variant content across platforms
 - [x] Write tests for bulk A/B test functionality (211 tests passing)
+
+
+## Cross-Platform A/B Test Comparison (New)
+- [x] Add bulk test group identifier to ab_tests table
+- [x] Create API endpoint for fetching related bulk tests
+- [x] Build comparison view showing results side-by-side
+- [x] Display engagement metrics per platform
+- [x] Highlight best performing platform
+- [x] Add visual comparison charts
+- [x] Write tests for comparison functionality (228 tests passing)
+
+## Content Warning Presets (New)
+- [x] Create cw_presets database table
+- [x] Add CRUD API endpoints for CW presets
+- [x] Build preset selector dropdown in PostBuilder
+- [x] Add "Save as preset" option for custom CW text
+- [x] Include default presets (Politics, Spoiler, Food, etc.)
+- [x] Allow editing and deleting presets
+- [x] Write tests for CW presets (228 tests passing)
+
+## Digest Email Preview in Browser (New)
+- [x] Create formatDigestHtml function for styled HTML email
+- [x] Update previewDigest endpoint to return HTML version
+- [x] Add "Preview in Browser" button to Email Digests settings
+- [x] Open preview in new browser window (700x800)
+- [x] Include all sections (analytics, goals, posts, platforms)
+- [x] Write tests for digest preview (228 tests passing)

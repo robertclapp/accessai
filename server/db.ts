@@ -1,4 +1,4 @@
-import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, gte, lte, sql, or, like, asc, ne, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { 
   InsertUser, users, 
@@ -24,7 +24,8 @@ import {
   industryBenchmarks, InsertIndustryBenchmark, IndustryBenchmark,
   emailDigestPreferences, InsertEmailDigestPreference, EmailDigestPreference,
   abTests, InsertABTest, ABTest,
-  abTestVariants, InsertABTestVariant, ABTestVariant
+  abTestVariants, InsertABTestVariant, ABTestVariant,
+  cwPresets, InsertCWPreset, CWPreset
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -2191,5 +2192,244 @@ export async function determineABTestWinner(testId: number): Promise<{
       confidence,
       recommendation: "Results are not statistically significant yet. Continue running the test."
     };
+  }
+}
+
+
+// ============================================
+// BULK A/B TEST GROUP OPERATIONS
+// ============================================
+
+/**
+ * Get all tests in a bulk test group
+ */
+export async function getBulkTestGroup(bulkTestGroupId: string, userId: number): Promise<ABTest[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(abTests)
+    .where(and(
+      eq(abTests.bulkTestGroupId, bulkTestGroupId),
+      eq(abTests.userId, userId)
+    ))
+    .orderBy(abTests.platform);
+}
+
+/**
+ * Get bulk test group comparison data with variants
+ */
+export async function getBulkTestGroupComparison(bulkTestGroupId: string, userId: number): Promise<{
+  tests: (ABTest & { variants: ABTestVariant[] })[];
+  summary: {
+    totalTests: number;
+    completedTests: number;
+    bestPlatform: string | null;
+    bestEngagementRate: number;
+  };
+}> {
+  const db = await getDb();
+  if (!db) return { tests: [], summary: { totalTests: 0, completedTests: 0, bestPlatform: null, bestEngagementRate: 0 } };
+  
+  const tests = await db
+    .select()
+    .from(abTests)
+    .where(and(
+      eq(abTests.bulkTestGroupId, bulkTestGroupId),
+      eq(abTests.userId, userId)
+    ))
+    .orderBy(abTests.platform);
+  
+  const testsWithVariants = await Promise.all(
+    tests.map(async (test) => {
+      const variants = await db
+        .select()
+        .from(abTestVariants)
+        .where(eq(abTestVariants.testId, test.id));
+      return { ...test, variants };
+    })
+  );
+  
+  // Calculate summary
+  const completedTests = tests.filter(t => t.status === "completed").length;
+  
+  // Find best performing platform based on winning variant engagement rate
+  let bestPlatform: string | null = null;
+  let bestEngagementRate = 0;
+  
+  for (const test of testsWithVariants) {
+    if (test.winningVariantId) {
+      const winner = test.variants.find(v => v.id === test.winningVariantId);
+      if (winner && (winner.engagementRate || 0) > bestEngagementRate) {
+        bestEngagementRate = winner.engagementRate || 0;
+        bestPlatform = test.platform;
+      }
+    }
+  }
+  
+  return {
+    tests: testsWithVariants,
+    summary: {
+      totalTests: tests.length,
+      completedTests,
+      bestPlatform,
+      bestEngagementRate
+    }
+  };
+}
+
+/**
+ * Get all bulk test groups for a user
+ */
+export async function getUserBulkTestGroups(userId: number): Promise<{
+  groupId: string;
+  testCount: number;
+  platforms: string[];
+  createdAt: Date;
+  name: string;
+}[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const tests = await db
+    .select()
+    .from(abTests)
+    .where(and(
+      eq(abTests.userId, userId),
+      sql`${abTests.bulkTestGroupId} IS NOT NULL`
+    ))
+    .orderBy(desc(abTests.createdAt));
+  
+  // Group by bulkTestGroupId
+  const groups = new Map<string, { tests: ABTest[]; name: string; createdAt: Date }>();
+  
+  for (const test of tests) {
+    if (!test.bulkTestGroupId) continue;
+    
+    if (!groups.has(test.bulkTestGroupId)) {
+      groups.set(test.bulkTestGroupId, {
+        tests: [],
+        name: test.name.replace(/ \([^)]+\)$/, ""), // Remove platform suffix
+        createdAt: test.createdAt
+      });
+    }
+    groups.get(test.bulkTestGroupId)!.tests.push(test);
+  }
+  
+  return Array.from(groups.entries()).map(([groupId, data]) => ({
+    groupId,
+    testCount: data.tests.length,
+    platforms: data.tests.map(t => t.platform),
+    createdAt: data.createdAt,
+    name: data.name
+  }));
+}
+
+
+// ============================================
+// CONTENT WARNING PRESET OPERATIONS
+// ============================================
+
+/**
+ * Get all CW presets for a user (including defaults)
+ */
+export async function getUserCWPresets(userId: number): Promise<CWPreset[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(cwPresets)
+    .where(or(
+      eq(cwPresets.userId, userId),
+      eq(cwPresets.isDefault, true)
+    ))
+    .orderBy(desc(cwPresets.usageCount), asc(cwPresets.name));
+}
+
+/**
+ * Create a new CW preset
+ */
+export async function createCWPreset(data: InsertCWPreset): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const result = await db.insert(cwPresets).values(data);
+  return result[0].insertId;
+}
+
+/**
+ * Update a CW preset
+ */
+export async function updateCWPreset(presetId: number, userId: number, data: Partial<InsertCWPreset>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .update(cwPresets)
+    .set(data)
+    .where(and(
+      eq(cwPresets.id, presetId),
+      eq(cwPresets.userId, userId),
+      eq(cwPresets.isDefault, false) // Can't edit default presets
+    ));
+}
+
+/**
+ * Delete a CW preset
+ */
+export async function deleteCWPreset(presetId: number, userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  await db
+    .delete(cwPresets)
+    .where(and(
+      eq(cwPresets.id, presetId),
+      eq(cwPresets.userId, userId),
+      eq(cwPresets.isDefault, false) // Can't delete default presets
+    ));
+}
+
+/**
+ * Increment usage count for a CW preset
+ */
+export async function incrementCWPresetUsage(presetId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db
+    .update(cwPresets)
+    .set({ usageCount: sql`${cwPresets.usageCount} + 1` })
+    .where(eq(cwPresets.id, presetId));
+}
+
+/**
+ * Seed default CW presets for a user
+ */
+export async function seedDefaultCWPresets(userId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  const defaults = [
+    { name: "Politics", text: "Politics" },
+    { name: "Spoiler", text: "Spoiler" },
+    { name: "Food", text: "Food" },
+    { name: "Mental Health", text: "Mental Health" },
+    { name: "Violence", text: "Violence/Gore" },
+    { name: "NSFW", text: "NSFW" },
+    { name: "Eye Contact", text: "Eye Contact" },
+    { name: "Flashing Images", text: "Flashing Images/GIF" },
+  ];
+  
+  for (const preset of defaults) {
+    await db.insert(cwPresets).values({
+      userId,
+      name: preset.name,
+      text: preset.text,
+      isDefault: true,
+      usageCount: 0,
+    });
   }
 }

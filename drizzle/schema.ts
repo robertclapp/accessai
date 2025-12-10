@@ -708,6 +708,9 @@ export const abTests = mysqlTable("ab_tests", {
   /** Statistical confidence level (0-100) */
   confidenceLevel: int("confidenceLevel"),
   
+  /** Bulk test group ID - links tests created together across platforms */
+  bulkTestGroupId: varchar("bulkTestGroupId", { length: 36 }),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -751,3 +754,28 @@ export const abTestVariants = mysqlTable("ab_test_variants", {
 
 export type ABTestVariant = typeof abTestVariants.$inferSelect;
 export type InsertABTestVariant = typeof abTestVariants.$inferInsert;
+
+
+/**
+ * Content warning presets for Mastodon posts.
+ * Allows users to save commonly used content warnings for quick selection.
+ */
+export const cwPresets = mysqlTable("cw_presets", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  
+  /** Preset name/label */
+  name: varchar("name", { length: 100 }).notNull(),
+  /** The actual content warning text */
+  text: varchar("text", { length: 500 }).notNull(),
+  /** Usage count for sorting by popularity */
+  usageCount: int("usageCount").default(0),
+  /** Whether this is a system default preset */
+  isDefault: boolean("isDefault").default(false),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CWPreset = typeof cwPresets.$inferSelect;
+export type InsertCWPreset = typeof cwPresets.$inferInsert;

@@ -399,21 +399,10 @@ export function PostBuilder({
             
             {/* Content Warning (Mastodon only) */}
             {platform === "mastodon" && (
-              <div>
-                <Label htmlFor="content-warning">Content Warning (CW)</Label>
-                <Input
-                  id="content-warning"
-                  placeholder="Add a content warning / spoiler tag (optional)"
-                  value={contentWarning}
-                  onChange={(e) => setContentWarning(e.target.value)}
-                  maxLength={500}
-                  className="mt-1"
-                  aria-describedby="cw-hint"
-                />
-                <p id="cw-hint" className="text-xs text-muted-foreground mt-1">
-                  Content warnings hide your post behind a clickable warning. Common uses: spoilers, sensitive topics, long posts.
-                </p>
-              </div>
+              <CWPresetSelector
+                contentWarning={contentWarning}
+                setContentWarning={setContentWarning}
+              />
             )}
             
             {/* Options */}
@@ -666,6 +655,138 @@ export function PostBuilder({
           </CardContent>
         </Card>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Content Warning Preset Selector Component
+ * Allows users to select from saved CW presets or create custom ones
+ */
+function CWPresetSelector({ 
+  contentWarning, 
+  setContentWarning 
+}: { 
+  contentWarning: string; 
+  setContentWarning: (value: string) => void;
+}) {
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
+  
+  const utils = trpc.useUtils();
+  const { data: presets } = trpc.cwPresets.list.useQuery();
+  
+  const createPreset = trpc.cwPresets.create.useMutation({
+    onSuccess: () => {
+      toast.success("CW preset saved");
+      setShowSaveDialog(false);
+      setNewPresetName("");
+      utils.cwPresets.list.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+  
+  const usePreset = trpc.cwPresets.use.useMutation();
+  
+  const handleSelectPreset = (preset: { id: number; text: string }) => {
+    setContentWarning(preset.text);
+    usePreset.mutate({ presetId: preset.id });
+  };
+  
+  const handleSaveAsPreset = () => {
+    if (!contentWarning.trim() || !newPresetName.trim()) return;
+    createPreset.mutate({
+      name: newPresetName,
+      text: contentWarning,
+    });
+  };
+  
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="content-warning">Content Warning (CW)</Label>
+      <div className="flex gap-2">
+        <Input
+          id="content-warning"
+          placeholder="Add a content warning / spoiler tag (optional)"
+          value={contentWarning}
+          onChange={(e) => setContentWarning(e.target.value)}
+          maxLength={500}
+          className="flex-1"
+          aria-describedby="cw-hint"
+        />
+        {contentWarning.trim() && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setShowSaveDialog(true)}
+            title="Save as preset"
+          >
+            <Save className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+      
+      {/* Preset Quick Select */}
+      {presets && presets.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {presets.slice(0, 8).map((preset) => (
+            <Button
+              key={preset.id}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => handleSelectPreset(preset)}
+            >
+              {preset.name}
+            </Button>
+          ))}
+        </div>
+      )}
+      
+      <p id="cw-hint" className="text-xs text-muted-foreground">
+        Content warnings hide your post behind a clickable warning. Click a preset above or type your own.
+      </p>
+      
+      {/* Save Preset Dialog */}
+      {showSaveDialog && (
+        <div className="p-3 border rounded-lg bg-muted/50 space-y-2">
+          <Label htmlFor="preset-name">Save as Preset</Label>
+          <div className="flex gap-2">
+            <Input
+              id="preset-name"
+              placeholder="Preset name (e.g., 'Spoiler')"
+              value={newPresetName}
+              onChange={(e) => setNewPresetName(e.target.value)}
+              maxLength={100}
+              className="flex-1"
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSaveAsPreset}
+              disabled={!newPresetName.trim() || createPreset.isPending}
+            >
+              {createPreset.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Save"
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowSaveDialog(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

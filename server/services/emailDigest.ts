@@ -464,6 +464,203 @@ AccessAI - Create Inclusive Content That Reaches Everyone
   return email;
 }
 
+/**
+ * Format digest content as HTML for browser preview
+ */
+export function formatDigestHtml(content: DigestContent): string {
+  const periodLabel = content.period === "weekly" ? "Weekly" : "Monthly";
+  const dateRange = `${content.periodStart.toLocaleDateString()} - ${content.periodEnd.toLocaleDateString()}`;
+
+  let html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${periodLabel} Digest - AccessAI</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; padding: 20px; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+    .header { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 30px; text-align: center; }
+    .header h1 { font-size: 24px; margin-bottom: 8px; }
+    .header p { opacity: 0.9; font-size: 14px; }
+    .content { padding: 24px; }
+    .section { margin-bottom: 24px; }
+    .section-title { font-size: 16px; font-weight: 600; color: #6366f1; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+    .section-title span { font-size: 20px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .stat-card { background: #f8fafc; border-radius: 8px; padding: 16px; }
+    .stat-value { font-size: 24px; font-weight: 700; color: #1e293b; }
+    .stat-label { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .stat-change { font-size: 12px; margin-top: 4px; }
+    .stat-change.positive { color: #22c55e; }
+    .stat-change.negative { color: #ef4444; }
+    .goal-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
+    .goal-status { font-size: 20px; }
+    .goal-info { flex: 1; }
+    .goal-platform { font-weight: 600; }
+    .goal-progress { font-size: 12px; color: #64748b; }
+    .progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; margin-top: 6px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #6366f1; border-radius: 3px; }
+    .progress-fill.achieved { background: #22c55e; }
+    .post-item { padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
+    .post-rank { font-weight: 700; color: #6366f1; }
+    .post-title { font-weight: 600; margin: 4px 0; }
+    .post-meta { font-size: 12px; color: #64748b; }
+    .platform-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 8px; }
+    .platform-badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: white; }
+    .platform-badge.best { background: #f59e0b; }
+    .platform-stats { font-size: 12px; color: #64748b; }
+    .scheduled-item { padding: 10px 12px; background: #f8fafc; border-radius: 8px; margin-bottom: 6px; font-size: 14px; }
+    .footer { padding: 20px; background: #f8fafc; text-align: center; font-size: 12px; color: #64748b; }
+    .footer a { color: #6366f1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>${periodLabel} Analytics Digest</h1>
+      <p>${dateRange}</p>
+    </div>
+    <div class="content">
+`;
+
+  // Analytics Summary
+  if (content.analytics) {
+    const a = content.analytics;
+    html += `
+      <div class="section">
+        <div class="section-title"><span>📊</span> Analytics Summary</div>
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-value">${a.totalPosts}</div>
+            <div class="stat-label">Total Posts</div>
+            <div class="stat-change ${a.changeFromPrevious.posts >= 0 ? 'positive' : 'negative'}">
+              ${a.changeFromPrevious.posts >= 0 ? '+' : ''}${a.changeFromPrevious.posts} from previous
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${a.totalImpressions.toLocaleString()}</div>
+            <div class="stat-label">Impressions</div>
+            <div class="stat-change ${a.changeFromPrevious.impressions >= 0 ? 'positive' : 'negative'}">
+              ${a.changeFromPrevious.impressions >= 0 ? '+' : ''}${a.changeFromPrevious.impressions.toLocaleString()}
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${a.totalEngagements.toLocaleString()}</div>
+            <div class="stat-label">Engagements</div>
+            <div class="stat-change ${a.changeFromPrevious.engagements >= 0 ? 'positive' : 'negative'}">
+              ${a.changeFromPrevious.engagements >= 0 ? '+' : ''}${a.changeFromPrevious.engagements.toLocaleString()}
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value">${a.avgEngagementRate.toFixed(2)}%</div>
+            <div class="stat-label">Avg Engagement Rate</div>
+          </div>
+        </div>
+      </div>
+`;
+  }
+
+  // Goal Progress
+  if (content.goalProgress && content.goalProgress.length > 0) {
+    html += `
+      <div class="section">
+        <div class="section-title"><span>🎯</span> Goal Progress</div>
+`;
+    for (const goal of content.goalProgress) {
+      const statusEmoji = goal.status === "achieved" ? "✅" : goal.status === "on_track" ? "🔄" : "⚠️";
+      const platformName = PLATFORM_DISPLAY_NAMES[goal.platform as keyof typeof PLATFORM_DISPLAY_NAMES] || goal.platform;
+      const progressClass = goal.status === "achieved" ? "achieved" : "";
+      html += `
+        <div class="goal-item">
+          <div class="goal-status">${statusEmoji}</div>
+          <div class="goal-info">
+            <div class="goal-platform">${platformName}</div>
+            <div class="goal-progress">${goal.currentEngagementRate.toFixed(2)}% / ${goal.targetEngagementRate.toFixed(2)}% target</div>
+            <div class="progress-bar"><div class="progress-fill ${progressClass}" style="width: ${Math.min(goal.progressPercent, 100)}%"></div></div>
+          </div>
+        </div>
+`;
+    }
+    html += `</div>`;
+  }
+
+  // Top Posts
+  if (content.topPosts && content.topPosts.length > 0) {
+    html += `
+      <div class="section">
+        <div class="section-title"><span>🏆</span> Top Performing Posts</div>
+`;
+    for (let i = 0; i < content.topPosts.length; i++) {
+      const post = content.topPosts[i];
+      const platformName = PLATFORM_DISPLAY_NAMES[post.platform as keyof typeof PLATFORM_DISPLAY_NAMES] || post.platform;
+      html += `
+        <div class="post-item">
+          <span class="post-rank">#${i + 1}</span>
+          <div class="post-title">${post.title}</div>
+          <div class="post-meta">${platformName} • ${post.engagements} engagements • ${post.impressions.toLocaleString()} impressions • ${post.engagementRate.toFixed(2)}% rate</div>
+        </div>
+`;
+    }
+    html += `</div>`;
+  }
+
+  // Platform Comparison
+  if (content.platformComparison && content.platformComparison.length > 0) {
+    html += `
+      <div class="section">
+        <div class="section-title"><span>📈</span> Platform Comparison</div>
+`;
+    for (const platform of content.platformComparison) {
+      const platformName = PLATFORM_DISPLAY_NAMES[platform.platform as keyof typeof PLATFORM_DISPLAY_NAMES] || platform.platform;
+      html += `
+        <div class="platform-item">
+          <div style="flex:1">
+            <strong>${platformName}</strong>
+            ${platform.bestPerformer ? '<span class="platform-badge best">⭐ Best</span>' : ''}
+            <div class="platform-stats">${platform.postCount} posts • ${platform.totalEngagements} engagements • ${platform.avgEngagementRate.toFixed(2)}% avg rate</div>
+          </div>
+        </div>
+`;
+    }
+    html += `</div>`;
+  }
+
+  // Scheduled Posts
+  if (content.scheduledPosts && content.scheduledPosts.length > 0) {
+    html += `
+      <div class="section">
+        <div class="section-title"><span>📅</span> Upcoming Scheduled Posts</div>
+`;
+    for (const post of content.scheduledPosts) {
+      const platformName = PLATFORM_DISPLAY_NAMES[post.platform as keyof typeof PLATFORM_DISPLAY_NAMES] || post.platform;
+      html += `
+        <div class="scheduled-item">
+          <strong>${post.title}</strong> (${platformName})<br>
+          <span style="color:#64748b">${post.scheduledAt.toLocaleString()}</span>
+        </div>
+`;
+    }
+    html += `</div>`;
+  }
+
+  html += `
+    </div>
+    <div class="footer">
+      <p>This is a preview of your email digest.</p>
+      <p>Manage your preferences in <a href="/settings">Settings</a>.</p>
+      <p style="margin-top:12px"><strong>AccessAI</strong> - Create Inclusive Content That Reaches Everyone</p>
+    </div>
+  </div>
+</body>
+</html>
+`;
+
+  return html;
+}
+
 // ============================================
 // DIGEST SENDING
 // ============================================

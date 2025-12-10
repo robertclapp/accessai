@@ -40,7 +40,7 @@ import { toast } from "sonner";
 import { PLATFORM_DISPLAY_NAMES } from "@shared/constants";
 import DashboardLayout from "@/components/DashboardLayout";
 
-type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "bluesky";
+type Platform = "linkedin" | "twitter" | "facebook" | "instagram" | "threads" | "bluesky" | "mastodon";
 
 const platformConfig: Record<Platform, { icon: string; color: string }> = {
   linkedin: { icon: "in", color: "bg-blue-600" },
@@ -49,6 +49,7 @@ const platformConfig: Record<Platform, { icon: string; color: string }> = {
   instagram: { icon: "📷", color: "bg-gradient-to-r from-purple-500 to-pink-500" },
   threads: { icon: "@", color: "bg-black" },
   bluesky: { icon: "🦋", color: "bg-sky-500" },
+  mastodon: { icon: "🐘", color: "bg-purple-600" },
 };
 
 interface Variant {
@@ -149,6 +150,37 @@ export default function ABTesting() {
     },
   });
 
+  const createBulkTest = trpc.abTesting.createBulk.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Created ${data.testIds.length} A/B tests across platforms`);
+      setIsCreateOpen(false);
+      setNewTest({
+        name: "",
+        description: "",
+        platform: "linkedin",
+        platforms: ["linkedin"],
+        isBulkTest: false,
+        durationHours: 48,
+        variants: [
+          { label: "A", content: "", hashtags: [] },
+          { label: "B", content: "", hashtags: [] },
+        ],
+      });
+      utils.abTesting.list.invalidate();
+      utils.abTesting.listBulkGroups.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
+  const { data: bulkGroups } = trpc.abTesting.listBulkGroups.useQuery();
+  const [selectedBulkGroupId, setSelectedBulkGroupId] = useState<string | null>(null);
+  const { data: bulkGroupComparison } = trpc.abTesting.getBulkGroupComparison.useQuery(
+    { bulkTestGroupId: selectedBulkGroupId! },
+    { enabled: !!selectedBulkGroupId }
+  );
+
   const scheduleWinner = trpc.abTesting.scheduleWinner.useMutation({
     onSuccess: () => {
       toast.success("Winning variant scheduled for reposting!");
@@ -215,39 +247,14 @@ export default function ABTesting() {
     }
     
     if (newTest.isBulkTest && newTest.platforms.length > 1) {
-      // Create tests for each selected platform
-      let successCount = 0;
-      for (const platform of newTest.platforms) {
-        try {
-          await createTest.mutateAsync({
-            name: `${newTest.name} (${PLATFORM_DISPLAY_NAMES[platform]})`,
-            description: newTest.description,
-            platform,
-            durationHours: newTest.durationHours,
-            variants: newTest.variants,
-          });
-          successCount++;
-        } catch {
-          // Continue with other platforms
-        }
-      }
-      if (successCount > 0) {
-        toast.success(`Created ${successCount} A/B tests across platforms`);
-        setIsCreateOpen(false);
-        setNewTest({
-          name: "",
-          description: "",
-          platform: "linkedin",
-          platforms: ["linkedin"],
-          isBulkTest: false,
-          durationHours: 48,
-          variants: [
-            { label: "A", content: "", hashtags: [] },
-            { label: "B", content: "", hashtags: [] },
-          ],
-        });
-        utils.abTesting.list.invalidate();
-      }
+      // Use the bulk create API
+      createBulkTest.mutate({
+        name: newTest.name,
+        description: newTest.description,
+        platforms: newTest.platforms,
+        durationHours: newTest.durationHours,
+        variants: newTest.variants,
+      });
     } else {
       // Single platform test
       createTest.mutate({
@@ -726,6 +733,192 @@ export default function ABTesting() {
             )}
           </Card>
         </div>
+
+        {/* Bulk Test Comparison Section */}
+        {bulkGroups && bulkGroups.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                Cross-Platform Test Comparison
+              </CardTitle>
+              <CardDescription>
+                Compare A/B test results across different platforms to find which performs best
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* Bulk Group Selector */}
+                <div className="flex items-center gap-4">
+                  <Label>Select Bulk Test Group:</Label>
+                  <Select
+                    value={selectedBulkGroupId || ""}
+                    onValueChange={(v) => setSelectedBulkGroupId(v)}
+                  >
+                    <SelectTrigger className="w-[300px]">
+                      <SelectValue placeholder="Choose a bulk test group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {bulkGroups.map((group) => (
+                        <SelectItem key={group.groupId} value={group.groupId}>
+                          <span className="flex items-center gap-2">
+                            <span>{group.name}</span>
+                            <Badge variant="secondary">{group.testCount} platforms</Badge>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Comparison Results */}
+                {bulkGroupComparison && (
+                  <div className="space-y-4">
+                    {/* Summary Card */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <Card className="bg-muted/50">
+                        <CardContent className="pt-4">
+                          <p className="text-sm text-muted-foreground">Total Platforms</p>
+                          <p className="text-2xl font-bold">{bulkGroupComparison.summary.totalTests}</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-muted/50">
+                        <CardContent className="pt-4">
+                          <p className="text-sm text-muted-foreground">Completed</p>
+                          <p className="text-2xl font-bold">{bulkGroupComparison.summary.completedTests}</p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-muted/50">
+                        <CardContent className="pt-4">
+                          <p className="text-sm text-muted-foreground">Best Platform</p>
+                          <p className="text-2xl font-bold flex items-center gap-2">
+                            {bulkGroupComparison.summary.bestPlatform ? (
+                              <>
+                                <span className={`w-6 h-6 rounded flex items-center justify-center text-white text-xs ${platformConfig[bulkGroupComparison.summary.bestPlatform as Platform]?.color}`}>
+                                  {platformConfig[bulkGroupComparison.summary.bestPlatform as Platform]?.icon}
+                                </span>
+                                {PLATFORM_DISPLAY_NAMES[bulkGroupComparison.summary.bestPlatform as keyof typeof PLATFORM_DISPLAY_NAMES]}
+                              </>
+                            ) : (
+                              "TBD"
+                            )}
+                          </p>
+                        </CardContent>
+                      </Card>
+                      <Card className="bg-muted/50">
+                        <CardContent className="pt-4">
+                          <p className="text-sm text-muted-foreground">Best Engagement Rate</p>
+                          <p className="text-2xl font-bold text-green-500">
+                            {(bulkGroupComparison.summary.bestEngagementRate / 100).toFixed(2)}%
+                          </p>
+                        </CardContent>
+                      </Card>
+                    </div>
+
+                    {/* Platform Comparison Table */}
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-sm font-medium">Platform</th>
+                            <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
+                            <th className="px-4 py-3 text-left text-sm font-medium">Winner</th>
+                            <th className="px-4 py-3 text-right text-sm font-medium">Engagement Rate</th>
+                            <th className="px-4 py-3 text-right text-sm font-medium">Impressions</th>
+                            <th className="px-4 py-3 text-right text-sm font-medium">Confidence</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {bulkGroupComparison.tests.map((test) => {
+                            const winningVariant = test.variants.find(v => v.id === test.winningVariantId);
+                            const bestVariant = test.variants.reduce((a, b) => 
+                              (a.engagementRate || 0) > (b.engagementRate || 0) ? a : b
+                            , test.variants[0]);
+                            const isBestPlatform = test.platform === bulkGroupComparison.summary.bestPlatform;
+                            
+                            return (
+                              <tr 
+                                key={test.id} 
+                                className={isBestPlatform ? "bg-green-500/10" : ""}
+                              >
+                                <td className="px-4 py-3">
+                                  <span className="flex items-center gap-2">
+                                    <span className={`w-6 h-6 rounded flex items-center justify-center text-white text-xs ${platformConfig[test.platform as Platform]?.color}`}>
+                                      {platformConfig[test.platform as Platform]?.icon}
+                                    </span>
+                                    <span className="font-medium">
+                                      {PLATFORM_DISPLAY_NAMES[test.platform as keyof typeof PLATFORM_DISPLAY_NAMES]}
+                                    </span>
+                                    {isBestPlatform && (
+                                      <Trophy className="w-4 h-4 text-yellow-500" />
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  {getStatusBadge(test.status)}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {winningVariant ? (
+                                    <Badge className="bg-green-500">Variant {winningVariant.label}</Badge>
+                                  ) : bestVariant ? (
+                                    <Badge variant="secondary">Leading: {bestVariant.label}</Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground">-</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-right font-mono">
+                                  {bestVariant ? (
+                                    <span className={isBestPlatform ? "text-green-500 font-bold" : ""}>
+                                      {((bestVariant.engagementRate || 0) / 100).toFixed(2)}%
+                                    </span>
+                                  ) : "-"}
+                                </td>
+                                <td className="px-4 py-3 text-right font-mono">
+                                  {test.variants.reduce((sum, v) => sum + (v.impressions || 0), 0).toLocaleString()}
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  {test.confidenceLevel ? (
+                                    <Badge variant={test.confidenceLevel >= 95 ? "default" : "secondary"}>
+                                      {test.confidenceLevel}%
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Recommendation */}
+                    {bulkGroupComparison.summary.bestPlatform && bulkGroupComparison.summary.completedTests > 0 && (
+                      <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+                        <h4 className="font-medium flex items-center gap-2 text-green-700 dark:text-green-400">
+                          <Trophy className="w-5 h-5" />
+                          Recommendation
+                        </h4>
+                        <p className="text-sm mt-1 text-muted-foreground">
+                          Based on your cross-platform A/B tests, <strong>{PLATFORM_DISPLAY_NAMES[bulkGroupComparison.summary.bestPlatform as keyof typeof PLATFORM_DISPLAY_NAMES]}</strong> shows 
+                          the highest engagement rate at <strong>{(bulkGroupComparison.summary.bestEngagementRate / 100).toFixed(2)}%</strong>. 
+                          Consider prioritizing this platform for similar content in the future.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {!selectedBulkGroupId && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>Select a bulk test group to compare results across platforms</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
       
       {/* Schedule Winner Dialog */}

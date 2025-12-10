@@ -25,6 +25,7 @@ import {
   sendDigestEmail,
   generateDigestContent,
   formatDigestEmail,
+  formatDigestHtml,
 } from "./services/emailDigest";
 
 // ============================================
@@ -1447,12 +1448,16 @@ ${aiContext}`
     
     previewDigest: protectedProcedure
       .input(z.object({
-        period: z.enum(["weekly", "monthly"])
+        period: z.enum(["weekly", "monthly"]),
+        format: z.enum(["text", "html"]).optional().default("text")
       }))
       .query(async ({ ctx, input }) => {
         const content = await generateDigestContent(ctx.user.id, input.period);
-        if (!content) return { preview: null };
-        return { preview: formatDigestEmail(content) };
+        if (!content) return { preview: null, html: null };
+        return { 
+          preview: formatDigestEmail(content),
+          html: formatDigestHtml(content)
+        };
       }),
     
     sendTestDigest: protectedProcedure
@@ -2274,6 +2279,64 @@ ${aiContext}`
         return { success: true };
       }),
     
+    /** Create bulk A/B tests across multiple platforms */
+    createBulk: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().optional(),
+        platforms: z.array(platformSchema.exclude(["all"])).min(2).max(7),
+        durationHours: z.number().min(1).max(720).default(48),
+        variants: z.array(z.object({
+          label: z.string().min(1).max(10),
+          content: z.string().min(1),
+          hashtags: z.array(z.string()).optional(),
+          mediaUrls: z.array(z.string()).optional(),
+        })).min(2).max(5),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const bulkTestGroupId = nanoid();
+        const testIds: number[] = [];
+        
+        for (const platform of input.platforms) {
+          const testId = await db.createABTest({
+            userId: ctx.user.id,
+            name: `${input.name} (${platform})`,
+            description: input.description,
+            platform,
+            durationHours: input.durationHours,
+            status: "draft",
+            bulkTestGroupId,
+          });
+          
+          for (const variant of input.variants) {
+            await db.createABTestVariant({
+              testId,
+              label: variant.label,
+              content: variant.content,
+              hashtags: variant.hashtags,
+              mediaUrls: variant.mediaUrls,
+            });
+          }
+          
+          testIds.push(testId);
+        }
+        
+        return { bulkTestGroupId, testIds };
+      }),
+    
+    /** Get all bulk test groups for the current user */
+    listBulkGroups: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await db.getUserBulkTestGroups(ctx.user.id);
+      }),
+    
+    /** Get bulk test group comparison data */
+    getBulkGroupComparison: protectedProcedure
+      .input(z.object({ bulkTestGroupId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        return await db.getBulkTestGroupComparison(input.bulkTestGroupId, ctx.user.id);
+      }),
+    
     /** Schedule the winning variant for reposting */
     scheduleWinner: protectedProcedure
       .input(z.object({
@@ -2313,6 +2376,68 @@ ${aiContext}`
         });
         
         return { success: true, postId, scheduledAt };
+      }),
+  }),
+
+  // ============================================
+  // CONTENT WARNING PRESETS ROUTER
+  // ============================================
+  cwPresets: router({
+    /** Get all CW presets for the current user */
+    list: protectedProcedure
+      .query(async ({ ctx }) => {
+        const presets = await db.getUserCWPresets(ctx.user.id);
+        // If no presets exist, seed defaults
+        if (presets.length === 0) {
+          await db.seedDefaultCWPresets(ctx.user.id);
+          return await db.getUserCWPresets(ctx.user.id);
+        }
+        return presets;
+      }),
+    
+    /** Create a new CW preset */
+    create: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(100),
+        text: z.string().min(1).max(500),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const presetId = await db.createCWPreset({
+          userId: ctx.user.id,
+          name: input.name,
+          text: input.text,
+          isDefault: false,
+        });
+        return { presetId };
+      }),
+    
+    /** Update a CW preset */
+    update: protectedProcedure
+      .input(z.object({
+        presetId: z.number(),
+        name: z.string().min(1).max(100).optional(),
+        text: z.string().min(1).max(500).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { presetId, ...data } = input;
+        await db.updateCWPreset(presetId, ctx.user.id, data);
+        return { success: true };
+      }),
+    
+    /** Delete a CW preset */
+    delete: protectedProcedure
+      .input(z.object({ presetId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.deleteCWPreset(input.presetId, ctx.user.id);
+        return { success: true };
+      }),
+    
+    /** Increment usage count when a preset is used */
+    use: protectedProcedure
+      .input(z.object({ presetId: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.incrementCWPresetUsage(input.presetId);
+        return { success: true };
       }),
   }),
 });

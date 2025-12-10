@@ -157,14 +157,22 @@ function EmailDigestsTab() {
     setIsPreviewing(true);
     try {
       const result = await previewDigestQuery.refetch();
-      if (result.data?.preview) {
+      if (result.data?.html) {
+        // Use the HTML version for a beautiful browser preview
+        const previewWindow = window.open("", "_blank", "width=700,height=800");
+        if (previewWindow) {
+          previewWindow.document.write(result.data.html);
+          previewWindow.document.close();
+        }
+      } else if (result.data?.preview) {
+        // Fallback to text version wrapped in pre tag
         const previewWindow = window.open("", "_blank");
         if (previewWindow) {
-          previewWindow.document.write(result.data.preview);
+          previewWindow.document.write(`<html><head><title>Digest Preview</title></head><body style="font-family:monospace;white-space:pre-wrap;padding:20px;">${result.data.preview}</body></html>`);
           previewWindow.document.close();
         }
       } else {
-        toast.error("No preview available");
+        toast.error("No preview available - you may need to create some posts first");
       }
     } catch (error) {
       toast.error("Failed to generate preview");
