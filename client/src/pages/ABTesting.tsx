@@ -1969,7 +1969,7 @@ function ABTestTemplatesDialog({
     tags: [] as string[],
   });
   const [tagInput, setTagInput] = useState("");
-  const [activeTab, setActiveTab] = useState<"my" | "community" | "top-rated">("my");
+  const [activeTab, setActiveTab] = useState<"my" | "community" | "top-rated" | "analytics">("my");
   const [versionHistoryTemplate, setVersionHistoryTemplate] = useState<any>(null);
   const [ratingTemplate, setRatingTemplate] = useState<any>(null);
   const [userRating, setUserRating] = useState(0);
@@ -2071,6 +2071,12 @@ function ABTestTemplatesDialog({
   });
   
   const { data: sharingStats } = trpc.abTesting.getSharingStats.useQuery(
+    undefined,
+    { enabled: open }
+  );
+  
+  // Analytics summary for user's templates
+  const { data: analyticsSummary } = trpc.abTesting.getTemplateAnalyticsSummary.useQuery(
     undefined,
     { enabled: open }
   );
@@ -2319,6 +2325,14 @@ function ABTestTemplatesDialog({
           >
             <Star className="w-4 h-4 mr-2" />
             Top Rated
+          </Button>
+          <Button
+            variant={activeTab === "analytics" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("analytics")}
+          >
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Analytics
           </Button>
           {sharingStats && sharingStats.totalShared > 0 && (
             <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
@@ -2708,6 +2722,104 @@ function ABTestTemplatesDialog({
               </div>
             )}
           </>
+        )}
+        
+        {/* Analytics Tab */}
+        {activeTab === "analytics" && (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold">{analyticsSummary?.totalTemplates || 0}</div>
+                  <div className="text-sm text-muted-foreground">Total Templates</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold">{analyticsSummary?.publicTemplates || 0}</div>
+                  <div className="text-sm text-muted-foreground">Public Templates</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold">{analyticsSummary?.totalDownloads || 0}</div>
+                  <div className="text-sm text-muted-foreground">Total Downloads</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold">{analyticsSummary?.totalExports || 0}</div>
+                  <div className="text-sm text-muted-foreground">Total Exports</div>
+                </CardContent>
+              </Card>
+            </div>
+            
+            {/* Top Performing Templates */}
+            {analyticsSummary?.topTemplates && analyticsSummary.topTemplates.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4" />
+                    Top Performing Templates
+                  </CardTitle>
+                  <CardDescription>Your most downloaded public templates</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {analyticsSummary.topTemplates.map((template, idx) => (
+                      <div key={template.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
+                            {idx + 1}
+                          </div>
+                          <div>
+                            <div className="font-medium">{template.name}</div>
+                            <div className="text-sm text-muted-foreground flex items-center gap-2">
+                              <Download className="w-3 h-3" />
+                              {template.downloads} downloads
+                              {template.rating > 0 && (
+                                <>
+                                  <span>·</span>
+                                  <Star className="w-3 h-3 fill-yellow-500 text-yellow-500" />
+                                  {template.rating.toFixed(1)}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Empty State */}
+            {(!analyticsSummary?.topTemplates || analyticsSummary.topTemplates.length === 0) && (
+              <div className="text-center py-12 text-muted-foreground">
+                <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No analytics data yet.</p>
+                <p className="text-sm mt-2">Share your templates with the community to see analytics!</p>
+              </div>
+            )}
+            
+            {/* Marketplace Link */}
+            <Card className="bg-gradient-to-r from-primary/10 to-primary/5">
+              <CardContent className="pt-4 flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium">Explore the Template Marketplace</h3>
+                  <p className="text-sm text-muted-foreground">Discover and download templates shared by the community</p>
+                </div>
+                <Button asChild>
+                  <a href="/marketplace">
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Browse Marketplace
+                  </a>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         )}
         
         {/* Version History Dialog */}

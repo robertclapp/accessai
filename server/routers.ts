@@ -12,7 +12,7 @@ import { notifyOwner } from "./_core/notification";
 // import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as db from "./db";
-import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete } from "./db";
+import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete, getMarketplaceTemplates, downloadMarketplaceTemplate, getMarketplaceCategories, trackTemplateEvent, getTemplateAnalytics, getTemplateAnalyticsSummary, getTrendingTemplates } from "./db";
 import type { InsertPost } from "../drizzle/schema";
 import {
   generateVerificationToken,
@@ -2856,6 +2856,71 @@ ${aiContext}`
     processAllDigestTestsAutoComplete: protectedProcedure
       .mutation(async () => {
         return await processDigestTestsAutoComplete();
+      }),
+    
+    // Template Marketplace
+    /** Get marketplace templates with filtering and sorting */
+    getMarketplaceTemplates: publicProcedure
+      .input(z.object({
+        category: z.string().optional(),
+        search: z.string().optional(),
+        sortBy: z.enum(['popular', 'rating', 'newest', 'downloads']).optional(),
+        limit: z.number().min(1).max(100).optional(),
+        offset: z.number().min(0).optional(),
+      }))
+      .query(async ({ input }) => {
+        return await getMarketplaceTemplates(input);
+      }),
+    
+    /** Get marketplace categories with counts */
+    getMarketplaceCategories: publicProcedure
+      .query(async () => {
+        return await getMarketplaceCategories();
+      }),
+    
+    /** Download a template from marketplace to user's library */
+    downloadMarketplaceTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const template = await downloadMarketplaceTemplate(input.templateId, ctx.user.id);
+        return { success: !!template, template };
+      }),
+    
+    /** Get trending templates */
+    getTrendingTemplates: publicProcedure
+      .input(z.object({ limit: z.number().min(1).max(20).optional() }))
+      .query(async ({ input }) => {
+        return await getTrendingTemplates(input.limit);
+      }),
+    
+    // Template Analytics
+    /** Track a template event */
+    trackTemplateEvent: publicProcedure
+      .input(z.object({
+        templateId: z.number(),
+        eventType: z.enum(['export', 'import', 'download', 'view', 'use']),
+        metadata: z.object({
+          source: z.string().optional(),
+          format: z.string().optional(),
+        }).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = ctx.user?.id;
+        await trackTemplateEvent(input.templateId, input.eventType, userId, input.metadata);
+        return { success: true };
+      }),
+    
+    /** Get analytics for a specific template */
+    getTemplateAnalytics: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ input }) => {
+        return await getTemplateAnalytics(input.templateId);
+      }),
+    
+    /** Get analytics summary for user's templates */
+    getTemplateAnalyticsSummary: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getTemplateAnalyticsSummary(ctx.user.id);
       }),
     
     // Template Version History

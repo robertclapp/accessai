@@ -684,3 +684,36 @@
 - [x] Validate imported template structure
 - [x] Handle duplicate template names (append import date)
 - [x] Write tests for import/export (530 tests passing)
+
+## Email Notifications for Digest Auto-Complete (New)
+- [x] Create notification function for auto-complete events
+- [x] Send email when test reaches statistical significance
+- [x] Include winning variant details in notification
+- [x] Include confidence level and open rate comparison
+- [x] Notification sent automatically when test auto-completes
+- [x] Write tests for notification functionality (566 tests passing)
+
+## Template Marketplace (New)
+- [x] Create marketplace page component (/marketplace route)
+- [x] Add filtering by category, rating, popularity
+- [x] Add search functionality for templates
+- [x] Show template previews with ratings and usage stats
+- [x] Add "Download" button to copy template to user's library
+- [x] Add sorting options (most popular, highest rated, newest, downloads)
+- [x] Add trending templates sidebar (last 7 days activity)
+- [x] Add template preview dialog with full details
+- [x] Public access (no login required to browse)
+- [x] Write tests for marketplace functionality (566 tests passing)
+
+## Template Analytics (New)
+- [x] Add template_analytics table for tracking exports/downloads
+- [x] Track template export events
+- [x] Track template import/download events
+- [x] Track view and use events
+- [x] Calculate popularity scores based on usage
+- [x] Add performance metrics (usage count, downloads, rating)
+- [x] Build analytics dashboard tab in templates dialog
+- [x] Show summary cards (total templates, public, downloads, exports)
+- [x] Show top performing templates with rankings
+- [x] Add trending templates calculation (activity score)
+- [x] Write tests for template analytics (566 tests passing)

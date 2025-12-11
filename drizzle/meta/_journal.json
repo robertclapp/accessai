@@ -197,6 +197,13 @@
       "when": 1765449735438,
       "tag": "0027_certain_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "5",
+      "when": 1765453368122,
+      "tag": "0028_easy_liz_osborn",
+      "breakpoints": true
     }
   ]
 }

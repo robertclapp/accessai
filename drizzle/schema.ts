@@ -998,6 +998,35 @@ export type InsertABTestTemplate = typeof abTestTemplates.$inferInsert;
 
 
 /**
+ * Template Analytics - Track exports, downloads, and usage metrics
+ */
+export const templateAnalytics = mysqlTable("template_analytics", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** Template being tracked */
+  templateId: int("templateId").notNull(),
+  
+  /** Type of event */
+  eventType: varchar("eventType", { length: 50 }).notNull(), // 'export', 'import', 'download', 'view', 'use'
+  
+  /** User who performed the action (null for anonymous views) */
+  userId: int("userId"),
+  
+  /** Additional metadata about the event */
+  metadata: json("metadata").$type<{
+    source?: string; // 'marketplace', 'direct', 'shared_link'
+    format?: string; // 'json', 'bulk'
+    userAgent?: string;
+  }>(),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TemplateAnalytic = typeof templateAnalytics.$inferSelect;
+export type InsertTemplateAnalytic = typeof templateAnalytics.$inferInsert;
+
+
+/**
  * Digest A/B Tests - Test different email digest formats to optimize engagement
  */
 export const digestABTests = mysqlTable("digest_ab_tests", {

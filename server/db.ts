@@ -4406,7 +4406,7 @@ export async function checkDigestTestAutoComplete(
  */
 export async function autoCompleteDigestTest(
   testId: number
-): Promise<{ success: boolean; winner: 'A' | 'B' | null; reason: string }> {
+): Promise<{ success: boolean; winner: 'A' | 'B' | null; reason: string; notificationSent?: boolean }> {
   const db = await getDb();
   if (!db) return { success: false, winner: null, reason: 'Database unavailable' };
   
@@ -4415,6 +4415,13 @@ export async function autoCompleteDigestTest(
   if (!checkResult.shouldComplete) {
     return { success: false, winner: null, reason: checkResult.reason };
   }
+  
+  // Get test details for notification
+  const [test] = await db
+    .select()
+    .from(digestABTests)
+    .where(eq(digestABTests.id, testId))
+    .limit(1);
   
   // Complete the test
   await db
@@ -4428,10 +4435,32 @@ export async function autoCompleteDigestTest(
     })
     .where(eq(digestABTests.id, testId));
   
+  // Send notification
+  let notificationSent = false;
+  if (test && checkResult.winner) {
+    const variantAOpenRate = (test.variantASent || 0) > 0 
+      ? ((test.variantAOpened || 0) / (test.variantASent || 1)) * 100 
+      : 0;
+    const variantBOpenRate = (test.variantBSent || 0) > 0 
+      ? ((test.variantBOpened || 0) / (test.variantBSent || 1)) * 100 
+      : 0;
+    
+    notificationSent = await notifyDigestTestAutoComplete(
+      test.name,
+      checkResult.winner,
+      checkResult.confidence,
+      test.variantAName || 'Variant A',
+      test.variantBName || 'Variant B',
+      variantAOpenRate,
+      variantBOpenRate
+    );
+  }
+  
   return { 
     success: true, 
     winner: checkResult.winner, 
-    reason: checkResult.reason 
+    reason: checkResult.reason,
+    notificationSent
   };
 }
 
@@ -4475,6 +4504,45 @@ export async function getRunningDigestTestsForAutoComplete(): Promise<DigestABTe
 }
 
 /**
+ * Send notification when a digest test auto-completes
+ */
+export async function notifyDigestTestAutoComplete(
+  testName: string,
+  winner: 'A' | 'B',
+  confidence: number,
+  variantAName: string,
+  variantBName: string,
+  variantAOpenRate: number,
+  variantBOpenRate: number
+): Promise<boolean> {
+  try {
+    const { notifyOwner } = await import('./_core/notification');
+    
+    const winnerName = winner === 'A' ? variantAName : variantBName;
+    const winnerRate = winner === 'A' ? variantAOpenRate : variantBOpenRate;
+    const loserRate = winner === 'A' ? variantBOpenRate : variantAOpenRate;
+    
+    const title = `🎯 Digest A/B Test Auto-Completed: ${testName}`;
+    const content = `Your digest A/B test "${testName}" has automatically completed!
+
+**Winner: ${winnerName}** with ${confidence}% statistical confidence.
+
+**Results:**
+- ${variantAName}: ${variantAOpenRate.toFixed(1)}% open rate
+- ${variantBName}: ${variantBOpenRate.toFixed(1)}% open rate
+
+The winning variant achieved a ${(winnerRate - loserRate).toFixed(1)} percentage point improvement in open rates.
+
+You can view the full results in your Settings > Email Digests > A/B Testing section.`;
+    
+    return await notifyOwner({ title, content });
+  } catch (error) {
+    console.error('[Notification] Failed to send digest auto-complete notification:', error);
+    return false;
+  }
+}
+
+/**
  * Process all running digest tests for auto-completion
  */
 export async function processDigestTestsAutoComplete(): Promise<{
@@ -4498,4 +4566,379 @@ export async function processDigestTestsAutoComplete(): Promise<{
   }
   
   return { processed: tests.length, completed, results };
+}
+
+
+// ==========================================
+// Template Marketplace Functions
+// ==========================================
+
+import { templateAnalytics } from "../drizzle/schema";
+import type { TemplateAnalytic, InsertTemplateAnalytic } from "../drizzle/schema";
+
+/**
+ * Get marketplace templates with filtering and sorting
+ */
+export async function getMarketplaceTemplates(options: {
+  category?: string;
+  search?: string;
+  sortBy?: 'popular' | 'rating' | 'newest' | 'downloads';
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  templates: Array<ABTestTemplate & {
+    averageRating: number;
+    totalRatings: number;
+    downloadCount: number;
+  }>;
+  total: number;
+}> {
+  const db = await getDb();
+  if (!db) return { templates: [], total: 0 };
+  
+  const { category, search, sortBy = 'popular', limit = 20, offset = 0 } = options;
+  
+  // Build base query for public templates
+  let query = db
+    .select()
+    .from(abTestTemplates)
+    .where(eq(abTestTemplates.isPublic, true));
+  
+  // Get all public templates first
+  const allTemplates = await query;
+  
+  // Filter by category
+  let filtered = allTemplates;
+  if (category && category !== 'all') {
+    filtered = filtered.filter(t => t.category === category);
+  }
+  
+  // Filter by search
+  if (search) {
+    const searchLower = search.toLowerCase();
+    filtered = filtered.filter(t => 
+      t.name.toLowerCase().includes(searchLower) ||
+      (t.description?.toLowerCase().includes(searchLower)) ||
+      (t.tags?.some(tag => tag.toLowerCase().includes(searchLower)))
+    );
+  }
+  
+  // Get ratings and download counts for each template
+  const templatesWithStats = await Promise.all(
+    filtered.map(async (template) => {
+      const ratings = await getTemplateRatings(template.id);
+      
+      // Get download count from analytics
+      const downloadEvents = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(templateAnalytics)
+        .where(and(
+          eq(templateAnalytics.templateId, template.id),
+          eq(templateAnalytics.eventType, 'download')
+        ));
+      
+      return {
+        ...template,
+        averageRating: ratings.averageRating,
+        totalRatings: ratings.totalRatings,
+        downloadCount: downloadEvents[0]?.count || 0,
+      };
+    })
+  );
+  
+  // Sort
+  let sorted = [...templatesWithStats];
+  switch (sortBy) {
+    case 'popular':
+      sorted.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+      break;
+    case 'rating':
+      sorted.sort((a, b) => b.averageRating - a.averageRating);
+      break;
+    case 'newest':
+      sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      break;
+    case 'downloads':
+      sorted.sort((a, b) => b.downloadCount - a.downloadCount);
+      break;
+  }
+  
+  // Paginate
+  const total = sorted.length;
+  const paginated = sorted.slice(offset, offset + limit);
+  
+  return { templates: paginated, total };
+}
+
+/**
+ * Download (copy) a template from marketplace to user's library
+ */
+export async function downloadMarketplaceTemplate(
+  templateId: number,
+  userId: number
+): Promise<ABTestTemplate | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Get the source template
+  const [sourceTemplate] = await db
+    .select()
+    .from(abTestTemplates)
+    .where(and(
+      eq(abTestTemplates.id, templateId),
+      eq(abTestTemplates.isPublic, true)
+    ))
+    .limit(1);
+  
+  if (!sourceTemplate) return null;
+  
+  // Get user info for attribution
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  
+  // Create a copy for the user
+  const [result] = await db.insert(abTestTemplates).values({
+    name: sourceTemplate.name,
+    description: sourceTemplate.description,
+    category: sourceTemplate.category,
+    isSystem: false,
+    userId,
+    platforms: sourceTemplate.platforms,
+    variantATemplate: sourceTemplate.variantATemplate,
+    variantALabel: sourceTemplate.variantALabel,
+    variantBTemplate: sourceTemplate.variantBTemplate,
+    variantBLabel: sourceTemplate.variantBLabel,
+    exampleUseCase: sourceTemplate.exampleUseCase,
+    tags: sourceTemplate.tags,
+    usageCount: 0,
+    isPublic: false,
+    shareCount: 0,
+    copiedFromId: sourceTemplate.id,
+    creatorName: sourceTemplate.creatorName || (sourceTemplate.userId ? null : 'System'),
+  });
+  
+  // Increment share count on source template
+  await db
+    .update(abTestTemplates)
+    .set({ shareCount: sql`${abTestTemplates.shareCount} + 1` })
+    .where(eq(abTestTemplates.id, templateId));
+  
+  // Track the download event
+  await trackTemplateEvent(templateId, 'download', userId, { source: 'marketplace' });
+  
+  // Return the new template
+  const [newTemplate] = await db
+    .select()
+    .from(abTestTemplates)
+    .where(eq(abTestTemplates.id, result.insertId))
+    .limit(1);
+  
+  return newTemplate || null;
+}
+
+/**
+ * Get marketplace categories with template counts
+ */
+export async function getMarketplaceCategories(): Promise<Array<{
+  category: string;
+  count: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const templates = await db
+    .select({ category: abTestTemplates.category })
+    .from(abTestTemplates)
+    .where(eq(abTestTemplates.isPublic, true));
+  
+  const categoryCounts: Record<string, number> = {};
+  templates.forEach(t => {
+    categoryCounts[t.category] = (categoryCounts[t.category] || 0) + 1;
+  });
+  
+  return Object.entries(categoryCounts)
+    .map(([category, count]) => ({ category, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+// ==========================================
+// Template Analytics Functions
+// ==========================================
+
+/**
+ * Track a template event
+ */
+export async function trackTemplateEvent(
+  templateId: number,
+  eventType: 'export' | 'import' | 'download' | 'view' | 'use',
+  userId?: number,
+  metadata?: { source?: string; format?: string; userAgent?: string }
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db.insert(templateAnalytics).values({
+    templateId,
+    eventType,
+    userId: userId || null,
+    metadata: metadata || null,
+  });
+  
+  return true;
+}
+
+/**
+ * Get analytics for a specific template
+ */
+export async function getTemplateAnalytics(templateId: number): Promise<{
+  views: number;
+  downloads: number;
+  exports: number;
+  uses: number;
+  recentActivity: Array<{ eventType: string; createdAt: Date }>;
+}> {
+  const db = await getDb();
+  if (!db) return { views: 0, downloads: 0, exports: 0, uses: 0, recentActivity: [] };
+  
+  const events = await db
+    .select()
+    .from(templateAnalytics)
+    .where(eq(templateAnalytics.templateId, templateId))
+    .orderBy(desc(templateAnalytics.createdAt));
+  
+  const views = events.filter(e => e.eventType === 'view').length;
+  const downloads = events.filter(e => e.eventType === 'download').length;
+  const exports = events.filter(e => e.eventType === 'export').length;
+  const uses = events.filter(e => e.eventType === 'use').length;
+  
+  const recentActivity = events.slice(0, 10).map(e => ({
+    eventType: e.eventType,
+    createdAt: e.createdAt,
+  }));
+  
+  return { views, downloads, exports, uses, recentActivity };
+}
+
+/**
+ * Get overall template analytics summary
+ */
+export async function getTemplateAnalyticsSummary(userId: number): Promise<{
+  totalTemplates: number;
+  publicTemplates: number;
+  totalDownloads: number;
+  totalExports: number;
+  topTemplates: Array<{
+    id: number;
+    name: string;
+    downloads: number;
+    rating: number;
+  }>;
+}> {
+  const db = await getDb();
+  if (!db) return { totalTemplates: 0, publicTemplates: 0, totalDownloads: 0, totalExports: 0, topTemplates: [] };
+  
+  // Get user's templates
+  const userTemplates = await db
+    .select()
+    .from(abTestTemplates)
+    .where(eq(abTestTemplates.userId, userId));
+  
+  const totalTemplates = userTemplates.length;
+  const publicTemplates = userTemplates.filter(t => t.isPublic).length;
+  
+  // Get analytics for user's templates
+  const templateIds = userTemplates.map(t => t.id);
+  
+  let totalDownloads = 0;
+  let totalExports = 0;
+  const topTemplatesData: Array<{ id: number; name: string; downloads: number; rating: number }> = [];
+  
+  for (const template of userTemplates.filter(t => t.isPublic)) {
+    const analytics = await getTemplateAnalytics(template.id);
+    const ratings = await getTemplateRatings(template.id);
+    
+    totalDownloads += analytics.downloads;
+    totalExports += analytics.exports;
+    
+    topTemplatesData.push({
+      id: template.id,
+      name: template.name,
+      downloads: analytics.downloads,
+      rating: ratings.averageRating,
+    });
+  }
+  
+  // Sort by downloads and take top 5
+  const topTemplates = topTemplatesData
+    .sort((a, b) => b.downloads - a.downloads)
+    .slice(0, 5);
+  
+  return { totalTemplates, publicTemplates, totalDownloads, totalExports, topTemplates };
+}
+
+/**
+ * Get trending templates (most activity in last 7 days)
+ */
+export async function getTrendingTemplates(limit: number = 10): Promise<Array<{
+  template: ABTestTemplate;
+  activityScore: number;
+  recentDownloads: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  
+  // Get recent events
+  const recentEvents = await db
+    .select()
+    .from(templateAnalytics)
+    .where(gte(templateAnalytics.createdAt, sevenDaysAgo));
+  
+  // Count events per template
+  const templateScores: Record<number, { downloads: number; views: number; uses: number }> = {};
+  recentEvents.forEach(event => {
+    if (!templateScores[event.templateId]) {
+      templateScores[event.templateId] = { downloads: 0, views: 0, uses: 0 };
+    }
+    if (event.eventType === 'download') templateScores[event.templateId].downloads++;
+    if (event.eventType === 'view') templateScores[event.templateId].views++;
+    if (event.eventType === 'use') templateScores[event.templateId].uses++;
+  });
+  
+  // Calculate activity scores (downloads * 3 + uses * 2 + views)
+  const scoredTemplates = Object.entries(templateScores)
+    .map(([id, scores]) => ({
+      templateId: parseInt(id),
+      activityScore: scores.downloads * 3 + scores.uses * 2 + scores.views,
+      recentDownloads: scores.downloads,
+    }))
+    .sort((a, b) => b.activityScore - a.activityScore)
+    .slice(0, limit);
+  
+  // Get template details
+  const results = await Promise.all(
+    scoredTemplates.map(async (scored) => {
+      const [template] = await db
+        .select()
+        .from(abTestTemplates)
+        .where(and(
+          eq(abTestTemplates.id, scored.templateId),
+          eq(abTestTemplates.isPublic, true)
+        ))
+        .limit(1);
+      
+      return template ? {
+        template,
+        activityScore: scored.activityScore,
+        recentDownloads: scored.recentDownloads,
+      } : null;
+    })
+  );
+  
+  return results.filter((r): r is NonNullable<typeof r> => r !== null);
 }
