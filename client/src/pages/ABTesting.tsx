@@ -55,7 +55,10 @@ import {
   Users,
   Globe,
   Lock,
-  Tag
+  Tag,
+  MessageSquare,
+  Upload,
+  FileJson
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -1971,6 +1974,9 @@ function ABTestTemplatesDialog({
   const [ratingTemplate, setRatingTemplate] = useState<any>(null);
   const [userRating, setUserRating] = useState(0);
   const [userReview, setUserReview] = useState("");
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importData, setImportData] = useState("");
+  const [selectedForExport, setSelectedForExport] = useState<number[]>([]);
   
   const { data: templates, isLoading, refetch } = trpc.abTesting.getTemplates.useQuery(
     undefined,
@@ -2094,6 +2100,27 @@ function ABTestTemplatesDialog({
     onError: (error) => toast.error(error.message),
   });
   
+  // Import/Export mutations
+  const importMutation = trpc.abTesting.importTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template imported successfully!");
+      setIsImportOpen(false);
+      setImportData("");
+      refetch();
+    },
+    onError: (error) => toast.error(`Failed to import: ${error.message}`),
+  });
+  
+  const importMultipleMutation = trpc.abTesting.importMultipleTemplates.useMutation({
+    onSuccess: (data) => {
+      toast.success(`Imported ${data.imported} templates${data.failed > 0 ? `, ${data.failed} failed` : ''}`);
+      setIsImportOpen(false);
+      setImportData("");
+      refetch();
+    },
+    onError: (error) => toast.error(`Failed to import: ${error.message}`),
+  });
+  
   const categories = [
     { value: "all", label: "All Categories" },
     { value: "headline", label: "Headlines" },
@@ -2140,6 +2167,115 @@ function ABTestTemplatesDialog({
       ...prev,
       tags: prev.tags.filter(t => t !== tag),
     }));
+  };
+  
+  // Export a single template - find it from the loaded templates
+  const handleExportTemplate = (templateId: number) => {
+    const template = templates?.find(t => t.id === templateId);
+    if (!template) {
+      toast.error('Template not found');
+      return;
+    }
+    
+    const exportData = {
+      name: template.name,
+      description: template.description,
+      category: template.category,
+      variantATemplate: template.variantATemplate,
+      variantBTemplate: template.variantBTemplate,
+      variantALabel: template.variantALabel,
+      variantBLabel: template.variantBLabel,
+      tags: template.tags,
+      exportedAt: new Date().toISOString(),
+      version: "1.0"
+    };
+    
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `template-${template.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success('Template exported successfully!');
+  };
+  
+  // Export multiple templates
+  const handleExportSelected = () => {
+    if (selectedForExport.length === 0) {
+      toast.error('Select templates to export');
+      return;
+    }
+    
+    const exportTemplates = templates?.filter(t => selectedForExport.includes(t.id)).map(template => ({
+      name: template.name,
+      description: template.description,
+      category: template.category,
+      variantATemplate: template.variantATemplate,
+      variantBTemplate: template.variantBTemplate,
+      variantALabel: template.variantALabel,
+      variantBLabel: template.variantBLabel,
+      tags: template.tags,
+      exportedAt: new Date().toISOString(),
+      version: "1.0"
+    })) || [];
+    
+    if (exportTemplates.length === 0) {
+      toast.error('No templates found to export');
+      return;
+    }
+    
+    const blob = new Blob([JSON.stringify(exportTemplates, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `templates-export-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${exportTemplates.length} templates!`);
+    setSelectedForExport([]);
+  };
+  
+  // Handle import from JSON
+  const handleImport = () => {
+    try {
+      const parsed = JSON.parse(importData);
+      if (Array.isArray(parsed)) {
+        // Multiple templates
+        importMultipleMutation.mutate({ templates: parsed });
+      } else {
+        // Single template
+        importMutation.mutate({ data: parsed });
+      }
+    } catch (error) {
+      toast.error('Invalid JSON format');
+    }
+  };
+  
+  // Handle file upload for import
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      setImportData(content);
+    };
+    reader.readAsText(file);
+  };
+  
+  // Toggle template selection for export
+  const toggleExportSelection = (templateId: number) => {
+    setSelectedForExport(prev => 
+      prev.includes(templateId) 
+        ? prev.filter(id => id !== templateId)
+        : [...prev, templateId]
+    );
   };
   
   return (
@@ -2217,6 +2353,16 @@ function ABTestTemplatesDialog({
             <Plus className="w-4 h-4 mr-2" />
             Create Template
           </Button>
+          <Button variant="outline" onClick={() => setIsImportOpen(true)}>
+            <Upload className="w-4 h-4 mr-2" />
+            Import
+          </Button>
+          {selectedForExport.length > 0 && (
+            <Button variant="outline" onClick={handleExportSelected}>
+              <Download className="w-4 h-4 mr-2" />
+              Export ({selectedForExport.length})
+            </Button>
+          )}
         </div>
         
         {/* My Templates Tab */}
@@ -2234,10 +2380,18 @@ function ABTestTemplatesDialog({
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 {filteredTemplates.map((template) => (
-                  <Card key={template.id} className="relative">
+                  <Card key={template.id} className={`relative ${selectedForExport.includes(template.id) ? 'ring-2 ring-primary' : ''}`}>
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
-                        <div className="space-y-1">
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedForExport.includes(template.id)}
+                            onChange={() => toggleExportSelection(template.id)}
+                            className="mt-1 h-4 w-4 rounded border-gray-300"
+                            title="Select for export"
+                          />
+                          <div className="space-y-1">
                           <CardTitle className="text-base flex items-center gap-2">
                             {template.name}
                             {template.isSystem && (
@@ -2253,6 +2407,7 @@ function ABTestTemplatesDialog({
                           <Badge className={getCategoryColor(template.category)}>
                             {template.category}
                           </Badge>
+                        </div>
                         </div>
                         <div className="flex gap-1">
                           <Button
@@ -2294,6 +2449,14 @@ function ABTestTemplatesDialog({
                                 title="Version history"
                               >
                                 <History className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleExportTemplate(template.id)}
+                                title="Export template"
+                              >
+                                <Download className="w-4 h-4" />
                               </Button>
                               <Button
                                 size="sm"
@@ -2443,9 +2606,17 @@ function ABTestTemplatesDialog({
                       )}
                       
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <div className="flex items-center">
-                          <Users className="w-3 h-3 mr-1" />
-                          Copied {template.shareCount || 0} times
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center">
+                            <Users className="w-3 h-3 mr-1" />
+                            {template.shareCount || 0} copies
+                          </span>
+                          {(template as any).reviewCount > 0 && (
+                            <span className="flex items-center">
+                              <MessageSquare className="w-3 h-3 mr-1" />
+                              {(template as any).reviewCount} reviews
+                            </span>
+                          )}
                         </div>
                         <Button
                           variant="ghost"
@@ -2621,7 +2792,7 @@ function ABTestTemplatesDialog({
         {/* Rating Dialog */}
         {ratingTemplate && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <Card className="w-full max-w-md mx-4">
+            <Card className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Star className="w-5 h-5 text-yellow-500" />
@@ -2632,6 +2803,7 @@ function ABTestTemplatesDialog({
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {/* Rating stars */}
                 <div className="flex items-center justify-center gap-2">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
@@ -2645,15 +2817,62 @@ function ABTestTemplatesDialog({
                     </button>
                   ))}
                 </div>
+                
+                {/* Review text input */}
                 <div className="space-y-2">
-                  <Label>Review (optional)</Label>
+                  <Label>Your Review</Label>
                   <Textarea
                     value={userReview}
                     onChange={(e) => setUserReview(e.target.value)}
-                    placeholder="Share your experience with this template..."
-                    rows={3}
+                    placeholder="Share your experience with this template... What worked well? Any tips for others?"
+                    rows={4}
+                    maxLength={500}
                   />
+                  <p className="text-xs text-muted-foreground text-right">
+                    {userReview.length}/500 characters
+                  </p>
                 </div>
+                
+                {/* Existing reviews */}
+                {templateRatings && templateRatings.ratings.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4" />
+                        Community Reviews ({templateRatings.totalRatings})
+                      </h4>
+                      <div className="flex items-center gap-1 text-sm">
+                        <Star className="w-4 h-4 fill-yellow-500 text-yellow-500" />
+                        <span className="font-medium">{templateRatings.averageRating.toFixed(1)}</span>
+                      </div>
+                    </div>
+                    <div className="space-y-3 max-h-48 overflow-y-auto">
+                      {templateRatings.ratings.filter(r => r.review).map((rating) => (
+                        <div key={rating.id} className="p-3 bg-muted rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-1">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star
+                                  key={star}
+                                  className={`w-3 h-3 ${star <= rating.rating ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(rating.createdAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                          <p className="text-sm">{rating.review}</p>
+                        </div>
+                      ))}
+                      {templateRatings.ratings.filter(r => r.review).length === 0 && (
+                        <p className="text-sm text-muted-foreground text-center py-2">
+                          No written reviews yet. Be the first to share your thoughts!
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </CardContent>
               <div className="flex justify-end gap-2 p-4 border-t">
                 <Button variant="outline" onClick={() => {
@@ -2907,6 +3126,76 @@ function ABTestTemplatesDialog({
               setPreviewTemplate(null);
             }}>
               Use This Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Import Template Dialog */}
+      <Dialog open={isImportOpen} onOpenChange={setIsImportOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              Import Templates
+            </DialogTitle>
+            <DialogDescription>
+              Import templates from a JSON file or paste JSON data directly
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Upload JSON File</Label>
+              <Input
+                type="file"
+                accept=".json"
+                onChange={handleFileUpload}
+                className="cursor-pointer"
+              />
+            </div>
+            
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">Or paste JSON</span>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>JSON Data</Label>
+              <Textarea
+                value={importData}
+                onChange={(e) => setImportData(e.target.value)}
+                placeholder='{\n  "name": "My Template",\n  "category": "headline",\n  "variantATemplate": "...",\n  "variantBTemplate": "..."\n}'
+                rows={8}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground">
+                Supports single template or array of templates. Required fields: name, category, variantATemplate, variantBTemplate
+              </p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsImportOpen(false);
+              setImportData("");
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleImport}
+              disabled={!importData.trim() || importMutation.isPending || importMultipleMutation.isPending}
+            >
+              {(importMutation.isPending || importMultipleMutation.isPending) ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 mr-2" />
+              )}
+              Import
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -650,3 +650,37 @@
 - [x] Build version history UI component
 - [x] Add revert to previous version functionality
 - [x] Write tests for version history (507 tests passing)
+
+## Rating Comments (New)
+- [x] Add comment field to template_ratings table (already exists as 'review')
+- [x] Update rating endpoints to include comments (already supports review field)
+- [x] Build comment display UI under template cards
+- [x] Add comment input in rating dialog (already exists with Textarea)
+- [x] Show review count on template cards
+- [x] Enhanced rating dialog with community reviews section
+- [x] Character limit (500) for reviews
+- [x] Write tests for rating comments (530 tests passing)
+
+## Digest Test Auto-Complete (New)
+- [x] Create statistical significance calculation for digest tests
+- [x] Add auto-complete check on digest send
+- [x] Update digest test status when significance reached
+- [x] Declare winner automatically based on open rates
+- [x] Add confidence level display in UI
+- [x] Add auto-complete settings dialog (enable/disable, min sample size, confidence threshold)
+- [x] Add auto-complete status indicator in running test alert
+- [x] Add "Auto-complete now" button when significance reached
+- [x] Add schema fields for auto-complete settings
+- [x] Write tests for auto-complete functionality (530 tests passing)
+
+## Template Import/Export (New)
+- [x] Create template export endpoint (JSON format)
+- [x] Create template import endpoint with validation
+- [x] Create bulk export endpoint for multiple templates
+- [x] Create bulk import endpoint for multiple templates
+- [x] Build export button in templates UI (individual and bulk)
+- [x] Build import dialog with file upload and JSON paste
+- [x] Add checkbox selection for bulk export
+- [x] Validate imported template structure
+- [x] Handle duplicate template names (append import date)
+- [x] Write tests for import/export (530 tests passing)

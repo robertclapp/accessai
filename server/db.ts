@@ -4123,3 +4123,379 @@ export async function getTemplateVersion(
   
   return version || null;
 }
+
+
+// ==========================================
+// Template Import/Export Functions
+// ==========================================
+
+export interface ExportedTemplate {
+  name: string;
+  description: string | null;
+  category: string;
+  variantATemplate: string;
+  variantBTemplate: string;
+  variantALabel: string | null;
+  variantBLabel: string | null;
+  tags: string[] | null;
+  exportedAt: string;
+  version: string;
+}
+
+/**
+ * Export a template to JSON format
+ */
+export async function exportTemplate(
+  templateId: number,
+  userId: number
+): Promise<ExportedTemplate | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [template] = await db
+    .select()
+    .from(abTestTemplates)
+    .where(and(
+      eq(abTestTemplates.id, templateId),
+      or(
+        eq(abTestTemplates.userId, userId),
+        eq(abTestTemplates.isPublic, true),
+        eq(abTestTemplates.isSystem, true)
+      )
+    ))
+    .limit(1);
+  
+  if (!template) return null;
+  
+  return {
+    name: template.name,
+    description: template.description,
+    category: template.category,
+    variantATemplate: template.variantATemplate,
+    variantBTemplate: template.variantBTemplate,
+    variantALabel: template.variantALabel,
+    variantBLabel: template.variantBLabel,
+    tags: template.tags,
+    exportedAt: new Date().toISOString(),
+    version: "1.0"
+  };
+}
+
+/**
+ * Import a template from JSON format
+ */
+export async function importTemplate(
+  userId: number,
+  data: ExportedTemplate,
+  newName?: string
+): Promise<ABTestTemplate | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Validate required fields
+  if (!data.name || !data.category || !data.variantATemplate || !data.variantBTemplate) {
+    return null;
+  }
+  
+  // Check for duplicate name
+  const existingTemplates = await db
+    .select()
+    .from(abTestTemplates)
+    .where(and(
+      eq(abTestTemplates.userId, userId),
+      eq(abTestTemplates.name, newName || data.name)
+    ))
+    .limit(1);
+  
+  const finalName = existingTemplates.length > 0 
+    ? `${newName || data.name} (Imported ${new Date().toLocaleDateString()})`
+    : (newName || data.name);
+  
+  const result = await db
+    .insert(abTestTemplates)
+    .values({
+      userId,
+      name: finalName,
+      description: data.description,
+      category: data.category,
+      variantATemplate: data.variantATemplate,
+      variantBTemplate: data.variantBTemplate,
+      variantALabel: data.variantALabel,
+      variantBLabel: data.variantBLabel,
+      tags: data.tags,
+      isSystem: false,
+      isPublic: false,
+    });
+  
+  const insertId = Number((result as any)[0]?.insertId || (result as any).insertId);
+  if (!insertId) return null;
+  
+  const [newTemplate] = await db
+    .select()
+    .from(abTestTemplates)
+    .where(eq(abTestTemplates.id, insertId))
+    .limit(1);
+  
+  return newTemplate || null;
+}
+
+/**
+ * Export multiple templates at once
+ */
+export async function exportMultipleTemplates(
+  templateIds: number[],
+  userId: number
+): Promise<ExportedTemplate[]> {
+  const templates: ExportedTemplate[] = [];
+  
+  for (const id of templateIds) {
+    const template = await exportTemplate(id, userId);
+    if (template) {
+      templates.push(template);
+    }
+  }
+  
+  return templates;
+}
+
+/**
+ * Import multiple templates at once
+ */
+export async function importMultipleTemplates(
+  userId: number,
+  templates: ExportedTemplate[]
+): Promise<{ imported: number; failed: number; templates: ABTestTemplate[] }> {
+  const results: ABTestTemplate[] = [];
+  let failed = 0;
+  
+  for (const data of templates) {
+    const template = await importTemplate(userId, data);
+    if (template) {
+      results.push(template);
+    } else {
+      failed++;
+    }
+  }
+  
+  return {
+    imported: results.length,
+    failed,
+    templates: results
+  };
+}
+
+
+// ==========================================
+// Digest A/B Test Auto-Complete Functions
+// ==========================================
+
+/**
+ * Calculate statistical significance for digest A/B test
+ * Uses chi-squared test for comparing open rates
+ */
+export function calculateDigestTestSignificance(
+  variantASent: number,
+  variantAOpened: number,
+  variantBSent: number,
+  variantBOpened: number
+): { confidence: number; winner: 'A' | 'B' | null; isSignificant: boolean } {
+  // Need minimum sample size
+  if (variantASent < 10 || variantBSent < 10) {
+    return { confidence: 0, winner: null, isSignificant: false };
+  }
+  
+  const rateA = variantAOpened / variantASent;
+  const rateB = variantBOpened / variantBSent;
+  
+  // Pooled rate
+  const pooledRate = (variantAOpened + variantBOpened) / (variantASent + variantBSent);
+  
+  // Standard error
+  const se = Math.sqrt(pooledRate * (1 - pooledRate) * (1/variantASent + 1/variantBSent));
+  
+  if (se === 0) {
+    return { confidence: 0, winner: null, isSignificant: false };
+  }
+  
+  // Z-score
+  const z = Math.abs(rateA - rateB) / se;
+  
+  // Convert Z to confidence (approximate)
+  // Z=1.645 -> 90%, Z=1.96 -> 95%, Z=2.576 -> 99%
+  let confidence = 0;
+  if (z >= 2.576) confidence = 99;
+  else if (z >= 2.326) confidence = 98;
+  else if (z >= 1.96) confidence = 95;
+  else if (z >= 1.645) confidence = 90;
+  else if (z >= 1.282) confidence = 80;
+  else confidence = Math.round(z * 30); // Rough approximation for lower values
+  
+  const winner = rateA > rateB ? 'A' : rateB > rateA ? 'B' : null;
+  const isSignificant = confidence >= 95;
+  
+  return { confidence, winner, isSignificant };
+}
+
+/**
+ * Check if a digest A/B test should auto-complete
+ */
+export async function checkDigestTestAutoComplete(
+  testId: number
+): Promise<{ shouldComplete: boolean; winner: 'A' | 'B' | null; confidence: number; reason: string }> {
+  const db = await getDb();
+  if (!db) return { shouldComplete: false, winner: null, confidence: 0, reason: 'Database unavailable' };
+  
+  const [test] = await db
+    .select()
+    .from(digestABTests)
+    .where(eq(digestABTests.id, testId))
+    .limit(1);
+  
+  if (!test) {
+    return { shouldComplete: false, winner: null, confidence: 0, reason: 'Test not found' };
+  }
+  
+  if (test.status !== 'running') {
+    return { shouldComplete: false, winner: null, confidence: 0, reason: 'Test not running' };
+  }
+  
+  if (!test.autoCompleteEnabled) {
+    return { shouldComplete: false, winner: null, confidence: 0, reason: 'Auto-complete disabled' };
+  }
+  
+  const minSampleSize = test.minimumSampleSize || 100;
+  const confidenceThreshold = test.confidenceThreshold || 95;
+  
+  // Check minimum sample size
+  if ((test.variantASent || 0) < minSampleSize || (test.variantBSent || 0) < minSampleSize) {
+    return { 
+      shouldComplete: false, 
+      winner: null, 
+      confidence: 0, 
+      reason: `Minimum sample size not reached (need ${minSampleSize} per variant)` 
+    };
+  }
+  
+  // Calculate significance
+  const { confidence, winner, isSignificant } = calculateDigestTestSignificance(
+    test.variantASent || 0,
+    test.variantAOpened || 0,
+    test.variantBSent || 0,
+    test.variantBOpened || 0
+  );
+  
+  if (confidence >= confidenceThreshold && winner) {
+    return { 
+      shouldComplete: true, 
+      winner, 
+      confidence, 
+      reason: `Statistical significance reached at ${confidence}% confidence` 
+    };
+  }
+  
+  return { 
+    shouldComplete: false, 
+    winner, 
+    confidence, 
+    reason: `Confidence ${confidence}% below threshold ${confidenceThreshold}%` 
+  };
+}
+
+/**
+ * Auto-complete a digest A/B test
+ */
+export async function autoCompleteDigestTest(
+  testId: number
+): Promise<{ success: boolean; winner: 'A' | 'B' | null; reason: string }> {
+  const db = await getDb();
+  if (!db) return { success: false, winner: null, reason: 'Database unavailable' };
+  
+  const checkResult = await checkDigestTestAutoComplete(testId);
+  
+  if (!checkResult.shouldComplete) {
+    return { success: false, winner: null, reason: checkResult.reason };
+  }
+  
+  // Complete the test
+  await db
+    .update(digestABTests)
+    .set({
+      status: 'completed',
+      winningVariant: checkResult.winner,
+      winningReason: checkResult.reason,
+      completedAt: new Date(),
+      autoCompletedAt: new Date(),
+    })
+    .where(eq(digestABTests.id, testId));
+  
+  return { 
+    success: true, 
+    winner: checkResult.winner, 
+    reason: checkResult.reason 
+  };
+}
+
+/**
+ * Update auto-complete settings for a digest A/B test
+ */
+export async function updateDigestTestAutoCompleteSettings(
+  testId: number,
+  userId: number,
+  settings: {
+    autoCompleteEnabled?: boolean;
+    minimumSampleSize?: number;
+    confidenceThreshold?: number;
+  }
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db
+    .update(digestABTests)
+    .set(settings)
+    .where(and(eq(digestABTests.id, testId), eq(digestABTests.userId, userId)));
+  
+  return true;
+}
+
+/**
+ * Get all running digest tests that may need auto-completion check
+ */
+export async function getRunningDigestTestsForAutoComplete(): Promise<DigestABTest[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(digestABTests)
+    .where(and(
+      eq(digestABTests.status, 'running'),
+      eq(digestABTests.autoCompleteEnabled, true)
+    ));
+}
+
+/**
+ * Process all running digest tests for auto-completion
+ */
+export async function processDigestTestsAutoComplete(): Promise<{
+  processed: number;
+  completed: number;
+  results: Array<{ testId: number; completed: boolean; winner: string | null; reason: string }>;
+}> {
+  const tests = await getRunningDigestTestsForAutoComplete();
+  const results: Array<{ testId: number; completed: boolean; winner: string | null; reason: string }> = [];
+  let completed = 0;
+  
+  for (const test of tests) {
+    const result = await autoCompleteDigestTest(test.id);
+    results.push({
+      testId: test.id,
+      completed: result.success,
+      winner: result.winner,
+      reason: result.reason,
+    });
+    if (result.success) completed++;
+  }
+  
+  return { processed: tests.length, completed, results };
+}

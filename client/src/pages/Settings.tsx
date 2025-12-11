@@ -49,7 +49,8 @@ import {
   FlaskConical,
   Plus,
   BarChart3,
-  Trophy
+  Trophy,
+  Settings as SettingsIcon
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -429,6 +430,10 @@ function DigestABTestingSection() {
   const [scheduleTestId, setScheduleTestId] = useState<number | null>(null);
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
+  const [autoCompleteSettingsTestId, setAutoCompleteSettingsTestId] = useState<number | null>(null);
+  const [autoCompleteEnabled, setAutoCompleteEnabled] = useState(true);
+  const [minSampleSize, setMinSampleSize] = useState(100);
+  const [confidenceThreshold, setConfidenceThreshold] = useState(95);
   
   const utils = trpc.useUtils();
   
@@ -487,6 +492,33 @@ function DigestABTestingSection() {
   const cancelSchedule = trpc.settings.cancelScheduledDigestABTest.useMutation({
     onSuccess: () => {
       toast.success("Schedule cancelled");
+      utils.settings.getDigestABTests.invalidate();
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+  
+  const { data: autoCompleteStatus } = trpc.abTesting.checkDigestTestAutoComplete.useQuery(
+    { testId: runningTest?.id || 0 },
+    { enabled: !!runningTest, refetchInterval: 30000 } // Check every 30 seconds
+  );
+  
+  const triggerAutoComplete = trpc.abTesting.triggerDigestTestAutoComplete.useMutation({
+    onSuccess: (result) => {
+      if (result.success) {
+        toast.success(`Test auto-completed! Winner: Variant ${result.winner}`);
+        utils.settings.getDigestABTests.invalidate();
+        utils.settings.getRunningDigestABTest.invalidate();
+      } else {
+        toast.info(result.reason);
+      }
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+  
+  const updateAutoCompleteSettings = trpc.abTesting.updateDigestTestAutoCompleteSettings.useMutation({
+    onSuccess: () => {
+      toast.success("Auto-complete settings updated");
+      setAutoCompleteSettingsTestId(null);
       utils.settings.getDigestABTests.invalidate();
     },
     onError: (error: any) => toast.error(error.message),
@@ -600,16 +632,45 @@ function DigestABTestingSection() {
                 <p className="text-xs">Open Rate: {runningTest.variantBSent ? ((runningTest.variantBOpened || 0) / runningTest.variantBSent * 100).toFixed(1) : 0}%</p>
               </div>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-3"
-              onClick={() => completeTest.mutate({ id: runningTest.id })}
-              disabled={completeTest.isPending}
-            >
-              {completeTest.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              End Test & Determine Winner
-            </Button>
+            <div className="flex items-center gap-3 mt-3">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => completeTest.mutate({ id: runningTest.id })}
+                disabled={completeTest.isPending}
+              >
+                {completeTest.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                End Test & Determine Winner
+              </Button>
+              {autoCompleteStatus && (
+                <div className="text-xs">
+                  <span className="text-muted-foreground">Auto-complete: </span>
+                  {autoCompleteStatus.shouldComplete ? (
+                    <Badge variant="default" className="bg-green-600">
+                      Ready ({autoCompleteStatus.confidence}% confidence)
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary">
+                      {autoCompleteStatus.confidence}% confidence
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
+            {autoCompleteStatus && autoCompleteStatus.shouldComplete && (
+              <div className="mt-2 p-2 bg-green-100 dark:bg-green-900/30 rounded text-xs text-green-800 dark:text-green-400">
+                Statistical significance reached! Variant {autoCompleteStatus.winner} is winning with {autoCompleteStatus.confidence}% confidence.
+                <Button
+                  size="sm"
+                  variant="link"
+                  className="ml-2 h-auto p-0 text-green-700 dark:text-green-400"
+                  onClick={() => triggerAutoComplete.mutate({ testId: runningTest.id })}
+                  disabled={triggerAutoComplete.isPending}
+                >
+                  Auto-complete now
+                </Button>
+              </div>
+            )}
           </AlertDescription>
         </Alert>
       )}
@@ -658,6 +719,19 @@ function DigestABTestingSection() {
                       title="Schedule test"
                     >
                       <Calendar className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setAutoCompleteSettingsTestId(test.id);
+                        setAutoCompleteEnabled(test.autoCompleteEnabled ?? true);
+                        setMinSampleSize(test.minimumSampleSize ?? 100);
+                        setConfidenceThreshold(test.confidenceThreshold ?? 95);
+                      }}
+                      title="Auto-complete settings"
+                    >
+                      <SettingsIcon className="h-4 w-4" />
                     </Button>
                   </>
                 )}
@@ -746,6 +820,84 @@ function DigestABTestingSection() {
             >
               {scheduleTest.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Schedule Test
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Auto-Complete Settings Dialog */}
+      <Dialog open={autoCompleteSettingsTestId !== null} onOpenChange={(open) => !open && setAutoCompleteSettingsTestId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Auto-Complete Settings</DialogTitle>
+            <DialogDescription>
+              Configure when this test should automatically complete based on statistical significance.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label>Enable Auto-Complete</Label>
+                <p className="text-xs text-muted-foreground">Automatically end test when significance is reached</p>
+              </div>
+              <Switch
+                checked={autoCompleteEnabled}
+                onCheckedChange={setAutoCompleteEnabled}
+              />
+            </div>
+            
+            {autoCompleteEnabled && (
+              <>
+                <div className="space-y-2">
+                  <Label>Minimum Sample Size (per variant)</Label>
+                  <Input
+                    type="number"
+                    value={minSampleSize}
+                    onChange={(e) => setMinSampleSize(Number(e.target.value))}
+                    min={10}
+                    max={10000}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Test won't auto-complete until each variant has at least this many sends.
+                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Confidence Threshold (%)</Label>
+                  <Select value={String(confidenceThreshold)} onValueChange={(v) => setConfidenceThreshold(Number(v))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="90">90% (Less strict)</SelectItem>
+                      <SelectItem value="95">95% (Recommended)</SelectItem>
+                      <SelectItem value="99">99% (Very strict)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Higher confidence means more certainty but requires more data.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAutoCompleteSettingsTestId(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                updateAutoCompleteSettings.mutate({
+                  testId: autoCompleteSettingsTestId!,
+                  autoCompleteEnabled,
+                  minimumSampleSize: minSampleSize,
+                  confidenceThreshold,
+                });
+              }}
+              disabled={updateAutoCompleteSettings.isPending}
+            >
+              {updateAutoCompleteSettings.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save Settings
             </Button>
           </DialogFooter>
         </DialogContent>

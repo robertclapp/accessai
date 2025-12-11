@@ -1047,6 +1047,12 @@ export const digestABTests = mysqlTable("digest_ab_tests", {
   scheduledStartAt: timestamp("scheduledStartAt"),
   autoStartEnabled: boolean("autoStartEnabled").default(false),
   
+  /** Auto-complete settings */
+  autoCompleteEnabled: boolean("autoCompleteEnabled").default(true),
+  minimumSampleSize: int("minimumSampleSize").default(100), // Min samples per variant before auto-complete
+  confidenceThreshold: int("confidenceThreshold").default(95), // Required confidence % for auto-complete
+  autoCompletedAt: timestamp("autoCompletedAt"),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

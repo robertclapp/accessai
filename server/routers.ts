@@ -12,7 +12,7 @@ import { notifyOwner } from "./_core/notification";
 // import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as db from "./db";
-import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion } from "./db";
+import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete } from "./db";
 import type { InsertPost } from "../drizzle/schema";
 import {
   generateVerificationToken,
@@ -2823,6 +2823,41 @@ ${aiContext}`
         return { success };
       }),
     
+    // Digest Test Auto-Complete
+    /** Check if a digest test should auto-complete */
+    checkDigestTestAutoComplete: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .query(async ({ input }) => {
+        return await checkDigestTestAutoComplete(input.testId);
+      }),
+    
+    /** Manually trigger auto-complete check for a test */
+    triggerDigestTestAutoComplete: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ input }) => {
+        return await autoCompleteDigestTest(input.testId);
+      }),
+    
+    /** Update auto-complete settings for a digest test */
+    updateDigestTestAutoCompleteSettings: protectedProcedure
+      .input(z.object({
+        testId: z.number(),
+        autoCompleteEnabled: z.boolean().optional(),
+        minimumSampleSize: z.number().min(10).max(10000).optional(),
+        confidenceThreshold: z.number().min(80).max(99).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { testId, ...settings } = input;
+        const success = await updateDigestTestAutoCompleteSettings(testId, ctx.user.id, settings);
+        return { success };
+      }),
+    
+    /** Process all running tests for auto-completion (admin/cron) */
+    processAllDigestTestsAutoComplete: protectedProcedure
+      .mutation(async () => {
+        return await processDigestTestsAutoComplete();
+      }),
+    
     // Template Version History
     createTemplateVersion: protectedProcedure
       .input(z.object({
@@ -2854,6 +2889,72 @@ ${aiContext}`
       .input(z.object({ versionId: z.number() }))
       .query(async ({ input }) => {
         return await getTemplateVersion(input.versionId);
+      }),
+    
+    // Template Import/Export
+    /** Export a single template to JSON */
+    exportTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        const data = await exportTemplate(input.templateId, ctx.user.id);
+        if (!data) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Template not found or access denied" });
+        }
+        return data;
+      }),
+    
+    /** Export multiple templates to JSON */
+    exportMultipleTemplates: protectedProcedure
+      .input(z.object({ templateIds: z.array(z.number()) }))
+      .query(async ({ ctx, input }) => {
+        const templates = await exportMultipleTemplates(input.templateIds, ctx.user.id);
+        return { templates, count: templates.length };
+      }),
+    
+    /** Import a template from JSON */
+    importTemplate: protectedProcedure
+      .input(z.object({
+        data: z.object({
+          name: z.string(),
+          description: z.string().nullable(),
+          category: z.string(),
+          variantATemplate: z.string(),
+          variantBTemplate: z.string(),
+          variantALabel: z.string().nullable(),
+          variantBLabel: z.string().nullable(),
+          tags: z.array(z.string()).nullable(),
+          exportedAt: z.string(),
+          version: z.string(),
+        }),
+        newName: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const template = await importTemplate(ctx.user.id, input.data, input.newName);
+        if (!template) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid template data" });
+        }
+        return { template };
+      }),
+    
+    /** Import multiple templates from JSON */
+    importMultipleTemplates: protectedProcedure
+      .input(z.object({
+        templates: z.array(z.object({
+          name: z.string(),
+          description: z.string().nullable(),
+          category: z.string(),
+          variantATemplate: z.string(),
+          variantBTemplate: z.string(),
+          variantALabel: z.string().nullable(),
+          variantBLabel: z.string().nullable(),
+          tags: z.array(z.string()).nullable(),
+          exportedAt: z.string(),
+          version: z.string(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await importMultipleTemplates(ctx.user.id, input.templates);
+        return result;
       }),
   }),
 
