@@ -829,3 +829,39 @@
 - [x] Add collaborative collections list showing role and owner
 - [x] Add user search for inviting collaborators
 - [x] Write tests for collaborative collections (669 tests passing)
+
+## Invite Collaborator Dialog (New)
+- [x] Add invite dialog to Collections tab in templates dialog
+- [x] Implement user search by email with debounced search
+- [x] Add role selection (viewer, editor, admin) with descriptions
+- [x] Add optional invitation message field
+- [x] Show pending invitations on collection detail view
+- [x] Show current collaborators with role badges
+- [x] Add remove collaborator functionality for admins
+- [x] Add trpc.useUtils for cache invalidation
+- [x] Write tests for invite dialog (693 tests passing)
+
+## Scheduled Weekly Digest Emails (New)
+- [x] Create scheduled job for sending digests (server/jobs/weeklyDigest.ts)
+- [x] Query users with digest enabled based on frequency
+- [x] Generate digest content for each user (followed collections, trending, recommendations)
+- [x] Send email using notification service
+- [x] Log digest send results with template counts
+- [x] Handle errors and retries with error logging
+- [x] Add triggerDigest endpoint for manual triggering
+- [x] Add processAllDigests endpoint for batch processing
+- [x] Write tests for scheduled job (693 tests passing)
+
+## Collaborator Activity Feed (New)
+- [x] Create collection_activity_feed table in schema
+- [x] Track template add/remove actions
+- [x] Track collaborator invite/join/leave/remove actions
+- [x] Track collection update/share/unshare actions
+- [x] Build activity feed component with icons and descriptions
+- [x] Show activity in "Activity" tab on FollowedCollections page
+- [x] Add unread activity count badge
+- [x] Track last seen activity in localStorage
+- [x] Highlight new activities with "New" badge
+- [x] Add getUserCollectionsActivityFeed for aggregated view
+- [x] Add getUnreadActivityCount for notification badge
+- [x] Write tests for activity feed (693 tests passing)

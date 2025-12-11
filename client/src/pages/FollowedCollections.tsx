@@ -34,6 +34,11 @@ import {
   Shield,
   Edit3,
   Eye,
+  Activity,
+  FileText,
+  UserMinus,
+  Share2,
+  Lock,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -53,6 +58,10 @@ const COLLECTION_COLORS: Record<string, string> = {
 export default function FollowedCollections() {
   const { user, loading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState("collections");
+  const [lastSeenActivity, setLastSeenActivity] = useState<Date>(() => {
+    const stored = localStorage.getItem('lastSeenActivity');
+    return stored ? new Date(stored) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  });
   
   // Collaborative collections queries
   const collaborativeCollectionsQuery = trpc.abTesting.getCollaborativeCollections.useQuery(
@@ -61,6 +70,18 @@ export default function FollowedCollections() {
   );
   const pendingInvitationsQuery = trpc.abTesting.getPendingInvitations.useQuery(
     undefined,
+    { enabled: !!user }
+  );
+  
+  // Activity feed query
+  const activityFeedQuery = trpc.abTesting.getUserActivityFeed.useQuery(
+    { limit: 50 },
+    { enabled: !!user }
+  );
+  
+  // Unread activity count
+  const unreadCountQuery = trpc.abTesting.getUnreadActivityCount.useQuery(
+    { since: lastSeenActivity },
     { enabled: !!user }
   );
   
@@ -224,12 +245,25 @@ export default function FollowedCollections() {
                   <Bell className="w-4 h-4 mr-2" />
                   Notifications
                 </TabsTrigger>
-                <TabsTrigger value="collaborative">
+<TabsTrigger value="collaborative">
                   <Users className="w-4 h-4 mr-2" />
                   Collaborative
                   {pendingInvitationsQuery.data && pendingInvitationsQuery.data.length > 0 && (
-                    <Badge variant="destructive" className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs">
+                    <Badge variant="destructive" className="ml-2">
                       {pendingInvitationsQuery.data.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="activity" onClick={() => {
+                  // Mark activities as seen when tab is clicked
+                  localStorage.setItem('lastSeenActivity', new Date().toISOString());
+                  setLastSeenActivity(new Date());
+                }}>
+                  <Activity className="w-4 h-4 mr-2" />
+                  Activity
+                  {unreadCountQuery.data && unreadCountQuery.data > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {unreadCountQuery.data}
                     </Badge>
                   )}
                 </TabsTrigger>
@@ -589,6 +623,125 @@ export default function FollowedCollections() {
                     </ul>
                   </AlertDescription>
                 </Alert>
+              </TabsContent>
+              
+              {/* Activity Feed Tab */}
+              <TabsContent value="activity" className="space-y-4 mt-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Activity className="w-4 h-4" />
+                      Recent Activity
+                    </CardTitle>
+                    <CardDescription>
+                      Actions by collaborators on your shared collections
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {activityFeedQuery.isLoading ? (
+                      <div className="flex justify-center py-8">
+                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : !activityFeedQuery.data || activityFeedQuery.data.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Activity className="w-10 h-10 mx-auto mb-2 opacity-50" />
+                        <p>No recent activity.</p>
+                        <p className="text-sm">Activity from your collections will appear here.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {activityFeedQuery.data.map((activity: any) => {
+                          const isNew = new Date(activity.createdAt) > lastSeenActivity;
+                          
+                          // Get icon and description based on action type
+                          const getActivityIcon = () => {
+                            switch (activity.actionType) {
+                              case 'template_added':
+                                return <FileText className="w-4 h-4 text-green-500" />;
+                              case 'template_removed':
+                                return <Trash2 className="w-4 h-4 text-red-500" />;
+                              case 'collaborator_invited':
+                                return <UserPlus className="w-4 h-4 text-blue-500" />;
+                              case 'collaborator_joined':
+                                return <Check className="w-4 h-4 text-green-500" />;
+                              case 'collaborator_left':
+                              case 'collaborator_removed':
+                                return <UserMinus className="w-4 h-4 text-orange-500" />;
+                              case 'collection_updated':
+                                return <Settings className="w-4 h-4 text-purple-500" />;
+                              case 'collection_shared':
+                                return <Share2 className="w-4 h-4 text-blue-500" />;
+                              case 'collection_unshared':
+                                return <Lock className="w-4 h-4 text-gray-500" />;
+                              default:
+                                return <Activity className="w-4 h-4" />;
+                            }
+                          };
+                          
+                          const getActivityDescription = () => {
+                            const details = activity.actionDetails || {};
+                            switch (activity.actionType) {
+                              case 'template_added':
+                                return `added template "${details.templateName || 'Unknown'}"${activity.message ? `: ${activity.message}` : ''}`;
+                              case 'template_removed':
+                                return `removed template "${details.templateName || 'Unknown'}"`;
+                              case 'collaborator_invited':
+                                return `invited ${details.collaboratorName || details.collaboratorEmail || 'someone'}`;
+                              case 'collaborator_joined':
+                                return 'joined the collection';
+                              case 'collaborator_left':
+                                return 'left the collection';
+                              case 'collaborator_removed':
+                                return `removed ${details.collaboratorName || 'a collaborator'}`;
+                              case 'collection_updated':
+                                return `updated ${details.fieldChanged || 'the collection'}`;
+                              case 'collection_shared':
+                                return 'made the collection public';
+                              case 'collection_unshared':
+                                return 'made the collection private';
+                              default:
+                                return 'performed an action';
+                            }
+                          };
+                          
+                          return (
+                            <div
+                              key={activity.id}
+                              className={`flex items-start gap-3 p-3 rounded-lg border ${isNew ? 'bg-primary/5 border-primary/20' : 'bg-muted/50'}`}
+                            >
+                              <div className="mt-0.5">
+                                {getActivityIcon()}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-medium text-sm">{activity.userName || 'Someone'}</span>
+                                  <span className="text-sm text-muted-foreground">{getActivityDescription()}</span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div
+                                    className="w-4 h-4 rounded flex items-center justify-center"
+                                    style={{ backgroundColor: activity.collectionColor || '#6366f1' }}
+                                  >
+                                    <FolderOpen className="w-2.5 h-2.5 text-white" />
+                                  </div>
+                                  <span className="text-xs text-muted-foreground">{activity.collectionName}</span>
+                                  <span className="text-xs text-muted-foreground">·</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    <Clock className="w-3 h-3 inline mr-1" />
+                                    {formatDate(activity.createdAt)}
+                                  </span>
+                                  {isNew && (
+                                    <Badge variant="secondary" className="text-xs py-0">New</Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
             </Tabs>
           </div>

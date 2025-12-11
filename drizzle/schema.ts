@@ -1426,3 +1426,50 @@ export const collectionCollaborators = mysqlTable("collection_collaborators", {
 
 export type CollectionCollaborator = typeof collectionCollaborators.$inferSelect;
 export type InsertCollectionCollaborator = typeof collectionCollaborators.$inferInsert;
+
+/**
+ * Collection Activity Feed - Track actions by collaborators on shared collections
+ */
+export const collectionActivityFeed = mysqlTable("collection_activity_feed", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  // Which collection this activity belongs to
+  collectionId: int("collectionId").notNull(),
+  
+  // Who performed the action
+  userId: int("userId").notNull(),
+  userName: varchar("userName", { length: 255 }),
+  
+  // Type of action
+  actionType: mysqlEnum("actionType", [
+    "template_added",
+    "template_removed",
+    "collaborator_invited",
+    "collaborator_joined",
+    "collaborator_left",
+    "collaborator_removed",
+    "collection_updated",
+    "collection_shared",
+    "collection_unshared",
+  ]).notNull(),
+  
+  // Details about the action (e.g., template name, collaborator name)
+  actionDetails: json("actionDetails").$type<{
+    templateId?: number;
+    templateName?: string;
+    collaboratorId?: number;
+    collaboratorName?: string;
+    collaboratorEmail?: string;
+    fieldChanged?: string;
+    oldValue?: string;
+    newValue?: string;
+  }>(),
+  
+  // Optional message or note
+  message: text("message"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CollectionActivityFeed = typeof collectionActivityFeed.$inferSelect;
+export type InsertCollectionActivityFeed = typeof collectionActivityFeed.$inferInsert;

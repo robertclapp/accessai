@@ -62,7 +62,12 @@ import {
   FolderOpen,
   FolderPlus,
   Layers,
-  Palette
+  Palette,
+  UserPlus,
+  Shield,
+  Edit3,
+  X,
+  User
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -1956,6 +1961,7 @@ function ABTestTemplatesDialog({
     variantBLabel: string | null;
   }) => void;
 }) {
+  const utils = trpc.useUtils();
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -1986,6 +1992,13 @@ function ABTestTemplatesDialog({
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importData, setImportData] = useState("");
   const [selectedForExport, setSelectedForExport] = useState<number[]>([]);
+  const [isInviteOpen, setIsInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"viewer" | "editor" | "admin">("editor");
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
   
   const { data: templates, isLoading, refetch } = trpc.abTesting.getTemplates.useQuery(
     undefined,
@@ -2159,6 +2172,48 @@ function ABTestTemplatesDialog({
       setRatingReminderTemplate(null);
     },
   });
+  
+  // Collaborator queries and mutations
+  const { data: collaborators, refetch: refetchCollaborators } = trpc.abTesting.getCollectionCollaborators.useQuery(
+    { collectionId: selectedCollection?.id || 0 },
+    { enabled: !!selectedCollection }
+  );
+  
+  const inviteCollaboratorMutation = trpc.abTesting.inviteCollaborator.useMutation({
+    onSuccess: () => {
+      toast.success("Invitation sent!");
+      setIsInviteOpen(false);
+      setInviteEmail("");
+      setInviteMessage("");
+      setSearchResults([]);
+      refetchCollaborators();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const removeCollaboratorMutation = trpc.abTesting.removeCollaborator.useMutation({
+    onSuccess: () => {
+      toast.success("Collaborator removed");
+      refetchCollaborators();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const handleSearchUsers = async (query: string) => {
+    setInviteEmail(query);
+    if (query.length >= 3) {
+      setIsSearching(true);
+      try {
+        const results = await utils.abTesting.searchUsersForInvite.fetch({ email: query });
+        setSearchResults(results || []);
+      } catch {
+        setSearchResults([]);
+      }
+      setIsSearching(false);
+    } else {
+      setSearchResults([]);
+    }
+  };
   
   const shareMutation = trpc.abTesting.shareTemplate.useMutation({
     onSuccess: () => {
@@ -2993,18 +3048,28 @@ function ABTestTemplatesDialog({
                           )}
                         </div>
                       </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        className="text-destructive"
-                        onClick={() => {
-                          if (confirm('Delete this collection?')) {
-                            deleteCollectionMutation.mutate({ collectionId: selectedCollection.id });
-                          }
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setIsInviteOpen(true)}
+                        >
+                          <UserPlus className="w-4 h-4 mr-1" />
+                          Invite
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="text-destructive"
+                          onClick={() => {
+                            if (confirm('Delete this collection?')) {
+                              deleteCollectionMutation.mutate({ collectionId: selectedCollection.id });
+                            }
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -3033,6 +3098,70 @@ function ABTestTemplatesDialog({
                       <div className="text-center py-8 text-muted-foreground">
                         <FileStack className="w-8 h-8 mx-auto mb-2 opacity-50" />
                         <p>No templates in this collection yet.</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+                
+                {/* Collaborators Section */}
+                <Card>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Users className="w-4 h-4" />
+                        Collaborators
+                      </CardTitle>
+                      <Button variant="outline" size="sm" onClick={() => setIsInviteOpen(true)}>
+                        <UserPlus className="w-4 h-4 mr-1" />
+                        Invite
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {!collaborators || collaborators.length === 0 ? (
+                      <div className="text-center py-6 text-muted-foreground">
+                        <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">No collaborators yet.</p>
+                        <p className="text-xs">Invite others to contribute to this collection.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {collaborators.map((collab: any) => (
+                          <div key={collab.id} className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                <User className="w-4 h-4 text-primary" />
+                              </div>
+                              <div>
+                                <div className="font-medium text-sm">{collab.userName || collab.userEmail || 'Unknown'}</div>
+                                <div className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Badge variant="outline" className="text-xs py-0">
+                                    {collab.role === 'admin' && <Shield className="w-3 h-3 mr-1" />}
+                                    {collab.role === 'editor' && <Edit3 className="w-3 h-3 mr-1" />}
+                                    {collab.role === 'viewer' && <Eye className="w-3 h-3 mr-1" />}
+                                    {collab.role}
+                                  </Badge>
+                                  {collab.status === 'pending' && (
+                                    <Badge variant="secondary" className="text-xs py-0">Pending</Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            {collab.status === 'accepted' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive h-8 w-8 p-0"
+                                onClick={() => removeCollaboratorMutation.mutate({ 
+                                  collectionId: selectedCollection.id, 
+                                  userId: collab.userId 
+                                })}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </CardContent>
@@ -3257,6 +3386,125 @@ function ABTestTemplatesDialog({
             </Card>
           </div>
         )}
+        
+        {/* Invite Collaborator Dialog */}
+        <Dialog open={isInviteOpen} onOpenChange={setIsInviteOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5" />
+                Invite Collaborator
+              </DialogTitle>
+              <DialogDescription>
+                Invite someone to collaborate on "{selectedCollection?.name}"
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Search by email</Label>
+                <Input
+                  placeholder="Enter email address..."
+                  value={inviteEmail}
+                  onChange={(e) => handleSearchUsers(e.target.value)}
+                />
+                {isSearching && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Searching...
+                  </div>
+                )}
+                {searchResults.length > 0 && (
+                  <div className="border rounded-lg divide-y">
+                    {searchResults.map((user: any) => (
+                      <div
+                        key={user.id}
+                        className="p-2 hover:bg-muted cursor-pointer flex items-center justify-between"
+                        onClick={() => {
+                          setInviteEmail(user.email || '');
+                          setSelectedUser(user);
+                          setSearchResults([]);
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                            <User className="w-4 h-4 text-primary" />
+                          </div>
+                          <div>
+                            <div className="font-medium text-sm">{user.name || 'Unknown'}</div>
+                            <div className="text-xs text-muted-foreground">{user.email}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Role</Label>
+                <Select value={inviteRole} onValueChange={(v: "viewer" | "editor" | "admin") => setInviteRole(v)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="viewer">
+                      <div className="flex items-center gap-2">
+                        <Eye className="w-4 h-4" />
+                        Viewer - Can view and download templates
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="editor">
+                      <div className="flex items-center gap-2">
+                        <Edit3 className="w-4 h-4" />
+                        Editor - Can add and remove templates
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="admin">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4" />
+                        Admin - Can manage collaborators
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Message (optional)</Label>
+                <Textarea
+                  placeholder="Add a personal message..."
+                  value={inviteMessage}
+                  onChange={(e) => setInviteMessage(e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setIsInviteOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!selectedUser || !selectedCollection) return;
+                  inviteCollaboratorMutation.mutate({
+                    collectionId: selectedCollection.id,
+                    userId: selectedUser.id,
+                    role: inviteRole,
+                    message: inviteMessage || undefined,
+                  });
+                }}
+                disabled={!selectedUser || inviteCollaboratorMutation.isPending}
+              >
+                {inviteCollaboratorMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                ) : (
+                  <UserPlus className="w-4 h-4 mr-2" />
+                )}
+                Send Invitation
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         
         {/* Version History Dialog */}
         {versionHistoryTemplate && (

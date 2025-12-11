@@ -1,4 +1,4 @@
-import { eq, and, desc, gte, lte, sql, or, like, asc, ne, inArray, gt, notInArray } from "drizzle-orm";
+import { eq, and, desc, gte, lte, sql, or, like, asc, ne, inArray, gt, notInArray, count, not } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   users,
@@ -6440,4 +6440,168 @@ export async function searchUsersByEmail(email: string, limit = 10) {
     .from(users)
     .where(like(users.email, `%${email}%`))
     .limit(limit);
+}
+
+
+// ============================================
+// COLLECTION ACTIVITY FEED
+// ============================================
+
+import { collectionActivityFeed } from "../drizzle/schema";
+
+/**
+ * Log an activity to the collection activity feed
+ */
+export async function logCollectionActivity(
+  collectionId: number,
+  userId: number,
+  userName: string | null,
+  actionType: 'template_added' | 'template_removed' | 'collaborator_invited' | 'collaborator_joined' | 'collaborator_left' | 'collaborator_removed' | 'collection_updated' | 'collection_shared' | 'collection_unshared',
+  actionDetails?: {
+    templateId?: number;
+    templateName?: string;
+    collaboratorId?: number;
+    collaboratorName?: string;
+    collaboratorEmail?: string;
+    fieldChanged?: string;
+    oldValue?: string;
+    newValue?: string;
+  },
+  message?: string
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.insert(collectionActivityFeed).values({
+    collectionId,
+    userId,
+    userName,
+    actionType,
+    actionDetails: actionDetails || null,
+    message: message || null,
+  });
+}
+
+/**
+ * Get activity feed for a collection
+ */
+export async function getCollectionActivityFeed(
+  collectionId: number,
+  limit: number = 50
+): Promise<any[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const activities = await db
+    .select()
+    .from(collectionActivityFeed)
+    .where(eq(collectionActivityFeed.collectionId, collectionId))
+    .orderBy(desc(collectionActivityFeed.createdAt))
+    .limit(limit);
+  
+  return activities;
+}
+
+/**
+ * Get activity feed for all collections a user is part of
+ */
+export async function getUserCollectionsActivityFeed(
+  userId: number,
+  limit: number = 50
+): Promise<any[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Get collections the user owns or collaborates on
+  const userCollections = await db
+    .select({ id: templateCollections.id })
+    .from(templateCollections)
+    .where(eq(templateCollections.userId, userId));
+  
+  const collaboratorCollections = await db
+    .select({ collectionId: collectionCollaborators.collectionId })
+    .from(collectionCollaborators)
+    .where(
+      and(
+        eq(collectionCollaborators.userId, userId),
+        eq(collectionCollaborators.status, 'accepted')
+      )
+    );
+  
+  const collectionIds = [
+    ...userCollections.map(c => c.id),
+    ...collaboratorCollections.map(c => c.collectionId),
+  ];
+  
+  if (collectionIds.length === 0) return [];
+  
+  // Get activities for all these collections
+  const activities = await db
+    .select({
+      id: collectionActivityFeed.id,
+      collectionId: collectionActivityFeed.collectionId,
+      userId: collectionActivityFeed.userId,
+      userName: collectionActivityFeed.userName,
+      actionType: collectionActivityFeed.actionType,
+      actionDetails: collectionActivityFeed.actionDetails,
+      message: collectionActivityFeed.message,
+      createdAt: collectionActivityFeed.createdAt,
+      collectionName: templateCollections.name,
+      collectionColor: templateCollections.color,
+    })
+    .from(collectionActivityFeed)
+    .innerJoin(templateCollections, eq(collectionActivityFeed.collectionId, templateCollections.id))
+    .where(inArray(collectionActivityFeed.collectionId, collectionIds))
+    .orderBy(desc(collectionActivityFeed.createdAt))
+    .limit(limit);
+  
+  return activities;
+}
+
+/**
+ * Get unread activity count for a user
+ */
+export async function getUnreadActivityCount(
+  userId: number,
+  since: Date
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  // Get collections the user owns or collaborates on
+  const userCollections = await db
+    .select({ id: templateCollections.id })
+    .from(templateCollections)
+    .where(eq(templateCollections.userId, userId));
+  
+  const collaboratorCollections = await db
+    .select({ collectionId: collectionCollaborators.collectionId })
+    .from(collectionCollaborators)
+    .where(
+      and(
+        eq(collectionCollaborators.userId, userId),
+        eq(collectionCollaborators.status, 'accepted')
+      )
+    );
+  
+  const collectionIds = [
+    ...userCollections.map(c => c.id),
+    ...collaboratorCollections.map(c => c.collectionId),
+  ];
+  
+  if (collectionIds.length === 0) return 0;
+  
+  // Count activities since the given date, excluding user's own actions
+  const result = await db
+    .select({ count: count() })
+    .from(collectionActivityFeed)
+    .where(
+      and(
+        inArray(collectionActivityFeed.collectionId, collectionIds),
+        gt(collectionActivityFeed.createdAt, since),
+        not(eq(collectionActivityFeed.userId, userId))
+      )
+    );
+  
+  return result[0]?.count || 0;
 }

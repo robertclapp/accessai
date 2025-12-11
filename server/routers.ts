@@ -12,7 +12,7 @@ import { notifyOwner } from "./_core/notification";
 // import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as db from "./db";
-import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete, getMarketplaceTemplates, downloadMarketplaceTemplate, getMarketplaceCategories, trackTemplateEvent, getTemplateAnalytics, getTemplateAnalyticsSummary, getTrendingTemplates, createTemplateCollection, getUserCollections, getCollectionWithTemplates, updateTemplateCollection, deleteTemplateCollection, addTemplateToCollection, removeTemplateFromCollection, getPublicCollections, downloadCollection, trackTemplateUsage, markTemplateAsRated, dismissRatingReminder, getUserTemplateUsageStats, getTemplatesNeedingRating, getFeaturedCollections, getTopPublicCollections, followCollection, unfollowCollection, getFollowedCollections, isFollowingCollection, toggleCollectionNotifications, notifyCollectionFollowers, generateRecommendations, getRecommendations, markRecommendationSeen, dismissRecommendation, getRecommendationReasonText, getDigestPreferences as getTemplateDigestPreferences, updateDigestPreferences as updateTemplateDigestPreferences, generateDigestContent as generateTemplateDigestContent, logDigestSent, getDigestHistory, inviteCollaborator, respondToInvitation, getCollectionCollaborators, getPendingInvitations, removeCollaborator, updateCollaboratorRole, canEditCollection, getCollaborativeCollections, searchUsersByEmail } from "./db";
+import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete, getMarketplaceTemplates, downloadMarketplaceTemplate, getMarketplaceCategories, trackTemplateEvent, getTemplateAnalytics, getTemplateAnalyticsSummary, getTrendingTemplates, createTemplateCollection, getUserCollections, getCollectionWithTemplates, updateTemplateCollection, deleteTemplateCollection, addTemplateToCollection, removeTemplateFromCollection, getPublicCollections, downloadCollection, trackTemplateUsage, markTemplateAsRated, dismissRatingReminder, getUserTemplateUsageStats, getTemplatesNeedingRating, getFeaturedCollections, getTopPublicCollections, followCollection, unfollowCollection, getFollowedCollections, isFollowingCollection, toggleCollectionNotifications, notifyCollectionFollowers, generateRecommendations, getRecommendations, markRecommendationSeen, dismissRecommendation, getRecommendationReasonText, getDigestPreferences as getTemplateDigestPreferences, updateDigestPreferences as updateTemplateDigestPreferences, generateDigestContent as generateTemplateDigestContent, logDigestSent, getDigestHistory, inviteCollaborator, respondToInvitation, getCollectionCollaborators, getPendingInvitations, removeCollaborator, updateCollaboratorRole, canEditCollection, getCollaborativeCollections, searchUsersByEmail, getCollectionActivityFeed, getUserCollectionsActivityFeed, getUnreadActivityCount } from "./db";
 import type { InsertPost } from "../drizzle/schema";
 import {
   generateVerificationToken,
@@ -3322,6 +3322,37 @@ ${aiContext}`
       .input(z.object({ email: z.string().min(2) }))
       .query(async ({ input }) => {
         return await searchUsersByEmail(input.email);
+      }),
+    
+    // Digest email endpoints
+    triggerDigest: protectedProcedure.mutation(async ({ ctx }) => {
+      const { triggerDigestForUser } = await import('./jobs/weeklyDigest');
+      const result = await triggerDigestForUser(ctx.user.id);
+      return { success: result };
+    }),
+    
+    processAllDigests: protectedProcedure.mutation(async () => {
+      const { processWeeklyDigests } = await import('./jobs/weeklyDigest');
+      return await processWeeklyDigests();
+    }),
+    
+    // Activity feed endpoints
+    getCollectionActivity: protectedProcedure
+      .input(z.object({ collectionId: z.number(), limit: z.number().optional() }))
+      .query(async ({ input }) => {
+        return await getCollectionActivityFeed(input.collectionId, input.limit || 50);
+      }),
+    
+    getUserActivityFeed: protectedProcedure
+      .input(z.object({ limit: z.number().optional() }))
+      .query(async ({ ctx, input }) => {
+        return await getUserCollectionsActivityFeed(ctx.user.id, input.limit || 50);
+      }),
+    
+    getUnreadActivityCount: protectedProcedure
+      .input(z.object({ since: z.date() }))
+      .query(async ({ ctx, input }) => {
+        return await getUnreadActivityCount(ctx.user.id, input.since);
       }),
   }),
 
