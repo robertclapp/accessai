@@ -1043,9 +1043,74 @@ export const digestABTests = mysqlTable("digest_ab_tests", {
   /** Number of digest sends to include in test */
   testDuration: int("testDuration").default(4), // Number of digest sends
   
+  /** Scheduling fields */
+  scheduledStartAt: timestamp("scheduledStartAt"),
+  autoStartEnabled: boolean("autoStartEnabled").default(false),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 export type DigestABTest = typeof digestABTests.$inferSelect;
 export type InsertDigestABTest = typeof digestABTests.$inferInsert;
+
+
+/**
+ * Template Ratings - User ratings for community templates
+ */
+export const templateRatings = mysqlTable("template_ratings", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** Template being rated */
+  templateId: int("templateId").notNull(),
+  
+  /** User who rated */
+  userId: int("userId").notNull(),
+  
+  /** Rating value (1-5 stars) */
+  rating: int("rating").notNull(),
+  
+  /** Optional review text */
+  review: text("review"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TemplateRating = typeof templateRatings.$inferSelect;
+export type InsertTemplateRating = typeof templateRatings.$inferInsert;
+
+
+/**
+ * Template Versions - Version history for A/B test templates
+ */
+export const templateVersions = mysqlTable("template_versions", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** Template this version belongs to */
+  templateId: int("templateId").notNull(),
+  
+  /** Version number (auto-incremented per template) */
+  versionNumber: int("versionNumber").notNull(),
+  
+  /** Snapshot of template data at this version */
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 50 }).notNull(),
+  variantATemplate: text("variantATemplate").notNull(),
+  variantBTemplate: text("variantBTemplate").notNull(),
+  variantALabel: varchar("variantALabel", { length: 100 }),
+  variantBLabel: varchar("variantBLabel", { length: 100 }),
+  tags: json("tags").$type<string[]>(),
+  
+  /** Change description */
+  changeNote: text("changeNote"),
+  
+  /** User who made the change */
+  changedBy: int("changedBy").notNull(),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TemplateVersion = typeof templateVersions.$inferSelect;
+export type InsertTemplateVersion = typeof templateVersions.$inferInsert;

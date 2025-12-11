@@ -12,7 +12,7 @@ import { notifyOwner } from "./_core/notification";
 // import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as db from "./db";
-import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats } from "./db";
+import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion } from "./db";
 import type { InsertPost } from "../drizzle/schema";
 import {
   generateVerificationToken,
@@ -1601,6 +1601,23 @@ ${aiContext}`
         await deleteDigestABTest(input.id, ctx.user.id);
         return { success: true };
       }),
+    
+    scheduleDigestABTest: protectedProcedure
+      .input(z.object({
+        id: z.number(),
+        scheduledStartAt: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await db.scheduleDigestABTest(input.id, ctx.user.id, new Date(input.scheduledStartAt));
+        return { success: true };
+      }),
+    
+    cancelScheduledDigestABTest: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await db.cancelScheduledDigestABTest(input.id, ctx.user.id);
+        return { success: true };
+      }),
   }),
 
   // ============================================
@@ -2756,6 +2773,87 @@ ${aiContext}`
     getSharingStats: protectedProcedure
       .query(async ({ ctx }) => {
         return await getTemplateSharingStats(ctx.user.id);
+      }),
+    
+    // Template Ratings
+    rateTemplate: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        rating: z.number().min(1).max(5),
+        review: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await rateTemplate(input.templateId, ctx.user.id, input.rating, input.review);
+        return { success: !!id, id };
+      }),
+    
+    getTemplateRatings: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ input }) => {
+        return await getTemplateRatings(input.templateId);
+      }),
+    
+    getUserRating: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await getUserTemplateRating(input.templateId, ctx.user.id);
+      }),
+    
+    getTopRatedTemplates: protectedProcedure
+      .input(z.object({ limit: z.number().optional() }))
+      .query(async ({ input }) => {
+        return await getTopRatedTemplates(input.limit);
+      }),
+    
+    // Digest A/B Test Scheduling
+    scheduleDigestTest: protectedProcedure
+      .input(z.object({
+        testId: z.number(),
+        scheduledStartAt: z.string().transform(s => new Date(s)),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await scheduleDigestABTest(input.testId, ctx.user.id, input.scheduledStartAt);
+        return { success };
+      }),
+    
+    cancelScheduledDigestTest: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await cancelScheduledDigestABTest(input.testId, ctx.user.id);
+        return { success };
+      }),
+    
+    // Template Version History
+    createTemplateVersion: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        changeNote: z.string().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const id = await createTemplateVersion(input.templateId, ctx.user.id, input.changeNote);
+        return { success: !!id, id };
+      }),
+    
+    getTemplateVersionHistory: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .query(async ({ input }) => {
+        return await getTemplateVersionHistory(input.templateId);
+      }),
+    
+    revertTemplateToVersion: protectedProcedure
+      .input(z.object({
+        templateId: z.number(),
+        versionId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await revertTemplateToVersion(input.templateId, input.versionId, ctx.user.id);
+        return { success };
+      }),
+    
+    getTemplateVersion: protectedProcedure
+      .input(z.object({ versionId: z.number() }))
+      .query(async ({ input }) => {
+        return await getTemplateVersion(input.versionId);
       }),
   }),
 

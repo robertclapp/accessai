@@ -1,7 +1,12 @@
 import { eq, and, desc, gte, lte, sql, or, like, asc, ne, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { 
-  InsertUser, users, 
+import {
+  users,
+  templateRatings,
+  templateVersions,
+  TemplateRating,
+  TemplateVersion,
+  InsertUser, User,
   posts, InsertPost, Post,
   templates, InsertTemplate, Template,
   knowledgeBase, InsertKnowledgeBaseItem, KnowledgeBaseItem,
@@ -3787,4 +3792,334 @@ export async function getTemplateSharingStats(userId: number): Promise<{
   }));
   
   return { totalShared, totalCopies, topTemplates };
+}
+
+
+// ==========================================
+// Template Ratings Functions
+// ==========================================
+
+/**
+ * Rate a template
+ */
+export async function rateTemplate(
+  templateId: number,
+  userId: number,
+  rating: number,
+  review?: string
+): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Check if user already rated this template
+  const [existing] = await db
+    .select()
+    .from(templateRatings)
+    .where(and(
+      eq(templateRatings.templateId, templateId),
+      eq(templateRatings.userId, userId)
+    ))
+    .limit(1);
+  
+  if (existing) {
+    // Update existing rating
+    await db
+      .update(templateRatings)
+      .set({ rating, review })
+      .where(eq(templateRatings.id, existing.id));
+    return existing.id;
+  }
+  
+  // Create new rating
+  const result = await db.insert(templateRatings).values({
+    templateId,
+    userId,
+    rating,
+    review,
+  });
+  
+  const insertId = (result as any)[0]?.insertId;
+  return insertId || null;
+}
+
+/**
+ * Get ratings for a template
+ */
+export async function getTemplateRatings(templateId: number): Promise<{
+  averageRating: number;
+  totalRatings: number;
+  ratings: TemplateRating[];
+}> {
+  const db = await getDb();
+  if (!db) return { averageRating: 0, totalRatings: 0, ratings: [] };
+  
+  const ratings = await db
+    .select()
+    .from(templateRatings)
+    .where(eq(templateRatings.templateId, templateId))
+    .orderBy(desc(templateRatings.createdAt));
+  
+  const totalRatings = ratings.length;
+  const averageRating = totalRatings > 0
+    ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings
+    : 0;
+  
+  return { averageRating, totalRatings, ratings };
+}
+
+/**
+ * Get user's rating for a template
+ */
+export async function getUserTemplateRating(
+  templateId: number,
+  userId: number
+): Promise<TemplateRating | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [rating] = await db
+    .select()
+    .from(templateRatings)
+    .where(and(
+      eq(templateRatings.templateId, templateId),
+      eq(templateRatings.userId, userId)
+    ))
+    .limit(1);
+  
+  return rating || null;
+}
+
+/**
+ * Get top rated templates
+ */
+export async function getTopRatedTemplates(limit: number = 10): Promise<{
+  template: ABTestTemplate;
+  averageRating: number;
+  totalRatings: number;
+}[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Get all public templates
+  const templates = await db
+    .select()
+    .from(abTestTemplates)
+    .where(eq(abTestTemplates.isPublic, true));
+  
+  // Get ratings for each template
+  const templatesWithRatings = await Promise.all(
+    templates.map(async (template) => {
+      const { averageRating, totalRatings } = await getTemplateRatings(template.id);
+      return { template, averageRating, totalRatings };
+    })
+  );
+  
+  // Sort by average rating (with at least 1 rating)
+  return templatesWithRatings
+    .filter(t => t.totalRatings > 0)
+    .sort((a, b) => b.averageRating - a.averageRating)
+    .slice(0, limit);
+}
+
+
+// ==========================================
+// Digest A/B Test Scheduling Functions
+// ==========================================
+
+/**
+ * Schedule a digest A/B test to start at a specific time
+ */
+export async function scheduleDigestABTest(
+  id: number,
+  userId: number,
+  scheduledStartAt: Date
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db
+    .update(digestABTests)
+    .set({
+      scheduledStartAt,
+      autoStartEnabled: true,
+    })
+    .where(and(eq(digestABTests.id, id), eq(digestABTests.userId, userId)));
+  
+  return true;
+}
+
+/**
+ * Cancel a scheduled digest A/B test
+ */
+export async function cancelScheduledDigestABTest(
+  id: number,
+  userId: number
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db
+    .update(digestABTests)
+    .set({
+      scheduledStartAt: null,
+      autoStartEnabled: false,
+    })
+    .where(and(eq(digestABTests.id, id), eq(digestABTests.userId, userId)));
+  
+  return true;
+}
+
+/**
+ * Get scheduled digest A/B tests that should be started
+ */
+export async function getScheduledDigestABTestsToStart(): Promise<DigestABTest[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const now = new Date();
+  
+  return db
+    .select()
+    .from(digestABTests)
+    .where(and(
+      eq(digestABTests.status, "draft"),
+      eq(digestABTests.autoStartEnabled, true),
+      lte(digestABTests.scheduledStartAt, now)
+    ));
+}
+
+
+// ==========================================
+// Template Version History Functions
+// ==========================================
+
+/**
+ * Create a version snapshot of a template
+ */
+export async function createTemplateVersion(
+  templateId: number,
+  userId: number,
+  changeNote?: string
+): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Get the current template
+  const [template] = await db
+    .select()
+    .from(abTestTemplates)
+    .where(eq(abTestTemplates.id, templateId))
+    .limit(1);
+  
+  if (!template) return null;
+  
+  // Get the next version number
+  const versions = await db
+    .select()
+    .from(templateVersions)
+    .where(eq(templateVersions.templateId, templateId))
+    .orderBy(desc(templateVersions.versionNumber))
+    .limit(1);
+  
+  const nextVersion = versions.length > 0 ? versions[0].versionNumber + 1 : 1;
+  
+  // Create the version snapshot
+  const result = await db.insert(templateVersions).values({
+    templateId,
+    versionNumber: nextVersion,
+    name: template.name,
+    description: template.description,
+    category: template.category,
+    variantATemplate: template.variantATemplate,
+    variantBTemplate: template.variantBTemplate,
+    variantALabel: template.variantALabel,
+    variantBLabel: template.variantBLabel,
+    tags: template.tags,
+    changeNote,
+    changedBy: userId,
+  });
+  
+  const insertId = (result as any)[0]?.insertId;
+  return insertId || null;
+}
+
+/**
+ * Get version history for a template
+ */
+export async function getTemplateVersionHistory(
+  templateId: number
+): Promise<TemplateVersion[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(templateVersions)
+    .where(eq(templateVersions.templateId, templateId))
+    .orderBy(desc(templateVersions.versionNumber));
+}
+
+/**
+ * Revert a template to a previous version
+ */
+export async function revertTemplateToVersion(
+  templateId: number,
+  versionId: number,
+  userId: number
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  // Get the version to revert to
+  const [version] = await db
+    .select()
+    .from(templateVersions)
+    .where(and(
+      eq(templateVersions.id, versionId),
+      eq(templateVersions.templateId, templateId)
+    ))
+    .limit(1);
+  
+  if (!version) return false;
+  
+  // Create a snapshot of current state before reverting
+  await createTemplateVersion(templateId, userId, `Before revert to version ${version.versionNumber}`);
+  
+  // Update the template with the version data
+  await db
+    .update(abTestTemplates)
+    .set({
+      name: version.name,
+      description: version.description,
+      category: version.category,
+      variantATemplate: version.variantATemplate,
+      variantBTemplate: version.variantBTemplate,
+      variantALabel: version.variantALabel,
+      variantBLabel: version.variantBLabel,
+      tags: version.tags,
+    })
+    .where(eq(abTestTemplates.id, templateId));
+  
+  // Create a new version entry for the revert
+  await createTemplateVersion(templateId, userId, `Reverted to version ${version.versionNumber}`);
+  
+  return true;
+}
+
+/**
+ * Get a specific template version
+ */
+export async function getTemplateVersion(
+  versionId: number
+): Promise<TemplateVersion | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [version] = await db
+    .select()
+    .from(templateVersions)
+    .where(eq(templateVersions.id, versionId))
+    .limit(1);
+  
+  return version || null;
 }

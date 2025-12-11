@@ -627,3 +627,26 @@
 - [x] Add copy-to-my-templates functionality
 - [x] Show attribution for shared templates
 - [x] Write tests for template sharing (481 tests passing)
+
+## Template Ratings (New)
+- [x] Create template_ratings table in schema
+- [x] Add rating endpoints (rate, get ratings, get average)
+- [x] Build star rating component for community templates
+- [x] Display average rating on template cards
+- [x] Sort community templates by rating (Top Rated tab)
+- [x] Write tests for template ratings (507 tests passing)
+
+## Digest A/B Test Scheduling (New)
+- [x] Add scheduling fields to digest_ab_tests table
+- [x] Create scheduling endpoints (schedule, cancel)
+- [x] Build scheduling UI in digest A/B test dialog
+- [x] Auto-start tests at scheduled time
+- [x] Write tests for digest test scheduling (507 tests passing)
+
+## Template Version History (New)
+- [x] Create template_versions table in schema
+- [x] Track changes on template update
+- [x] Add version history endpoint
+- [x] Build version history UI component
+- [x] Add revert to previous version functionality
+- [x] Write tests for version history (507 tests passing)

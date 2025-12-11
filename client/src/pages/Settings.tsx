@@ -426,6 +426,9 @@ function DigestABTestingSection() {
   const [variantASubject, setVariantASubject] = useState("");
   const [variantBSubject, setVariantBSubject] = useState("");
   const [testDuration, setTestDuration] = useState(4);
+  const [scheduleTestId, setScheduleTestId] = useState<number | null>(null);
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
   
   const utils = trpc.useUtils();
   
@@ -468,6 +471,25 @@ function DigestABTestingSection() {
       utils.settings.getDigestABTests.invalidate();
     },
     onError: (error) => toast.error(error.message),
+  });
+  
+  const scheduleTest = trpc.settings.scheduleDigestABTest.useMutation({
+    onSuccess: () => {
+      toast.success("Test scheduled!");
+      setScheduleTestId(null);
+      setScheduledDate("");
+      setScheduledTime("");
+      utils.settings.getDigestABTests.invalidate();
+    },
+    onError: (error: any) => toast.error(error.message),
+  });
+  
+  const cancelSchedule = trpc.settings.cancelScheduledDigestABTest.useMutation({
+    onSuccess: () => {
+      toast.success("Schedule cancelled");
+      utils.settings.getDigestABTests.invalidate();
+    },
+    onError: (error: any) => toast.error(error.message),
   });
   
   const handleCreate = () => {
@@ -619,15 +641,42 @@ function DigestABTestingSection() {
               </div>
               <div className="flex items-center gap-2">
                 {test.status === "draft" && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => startTest.mutate({ id: test.id })}
-                    disabled={!!runningTest || startTest.isPending}
-                  >
-                    <Play className="h-4 w-4 mr-1" />
-                    Start
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => startTest.mutate({ id: test.id })}
+                      disabled={!!runningTest || startTest.isPending}
+                    >
+                      <Play className="h-4 w-4 mr-1" />
+                      Start
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setScheduleTestId(test.id)}
+                      title="Schedule test"
+                    >
+                      <Calendar className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
+                {test.scheduledStartAt && test.status === "draft" && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      <Calendar className="h-3 w-3 mr-1" />
+                      Scheduled: {new Date(test.scheduledStartAt).toLocaleDateString()}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => cancelSchedule.mutate({ id: test.id })}
+                      disabled={cancelSchedule.isPending}
+                      title="Cancel schedule"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
                 )}
                 <Button
                   size="sm"
@@ -646,6 +695,61 @@ function DigestABTestingSection() {
           No A/B tests yet. Create one to optimize your digest open rates!
         </p>
       )}
+      
+      {/* Schedule Dialog */}
+      <Dialog open={scheduleTestId !== null} onOpenChange={(open) => !open && setScheduleTestId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Schedule A/B Test</DialogTitle>
+            <DialogDescription>
+              Choose when this test should automatically start.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="schedule-date">Start Date</Label>
+              <Input
+                id="schedule-date"
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => setScheduledDate(e.target.value)}
+                min={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="schedule-time">Start Time</Label>
+              <Input
+                id="schedule-time"
+                type="time"
+                value={scheduledTime}
+                onChange={(e) => setScheduledTime(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleTestId(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!scheduledDate || !scheduledTime) {
+                  toast.error("Please select date and time");
+                  return;
+                }
+                const scheduledAt = new Date(`${scheduledDate}T${scheduledTime}`);
+                scheduleTest.mutate({
+                  id: scheduleTestId!,
+                  scheduledStartAt: scheduledAt.getTime(),
+                });
+              }}
+              disabled={scheduleTest.isPending}
+            >
+              {scheduleTest.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Schedule Test
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

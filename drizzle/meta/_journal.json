@@ -183,6 +183,13 @@
       "when": 1765427192617,
       "tag": "0025_happy_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "5",
+      "when": 1765432218703,
+      "tag": "0026_curvy_raider",
+      "breakpoints": true
     }
   ]
 }

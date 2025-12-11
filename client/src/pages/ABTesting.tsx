@@ -48,6 +48,9 @@ import {
   Minus,
   FileStack,
   Copy,
+  Star,
+  Clock3,
+  RotateCcw,
   Share2,
   Users,
   Globe,
@@ -1963,7 +1966,11 @@ function ABTestTemplatesDialog({
     tags: [] as string[],
   });
   const [tagInput, setTagInput] = useState("");
-  const [activeTab, setActiveTab] = useState<"my" | "community">("my");
+  const [activeTab, setActiveTab] = useState<"my" | "community" | "top-rated">("my");
+  const [versionHistoryTemplate, setVersionHistoryTemplate] = useState<any>(null);
+  const [ratingTemplate, setRatingTemplate] = useState<any>(null);
+  const [userRating, setUserRating] = useState(0);
+  const [userReview, setUserReview] = useState("");
   
   const { data: templates, isLoading, refetch } = trpc.abTesting.getTemplates.useQuery(
     undefined,
@@ -2025,6 +2032,37 @@ function ABTestTemplatesDialog({
     { category: selectedCategory === "all" ? undefined : selectedCategory, search: searchQuery || undefined },
     { enabled: open && activeTab === "community" }
   );
+  
+  const { data: topRatedTemplates, isLoading: isTopRatedLoading } = trpc.abTesting.getTopRatedTemplates.useQuery(
+    { limit: 20 },
+    { enabled: open && activeTab === "top-rated" }
+  );
+  
+  const { data: versionHistory } = trpc.abTesting.getTemplateVersionHistory.useQuery(
+    { templateId: versionHistoryTemplate?.id || 0 },
+    { enabled: !!versionHistoryTemplate }
+  );
+  
+  const { data: templateRatings, refetch: refetchRatings } = trpc.abTesting.getTemplateRatings.useQuery(
+    { templateId: ratingTemplate?.id || 0 },
+    { enabled: !!ratingTemplate }
+  );
+  
+  const rateMutation = trpc.abTesting.rateTemplate.useMutation({
+    onSuccess: () => {
+      refetchRatings();
+      setRatingTemplate(null);
+      setUserRating(0);
+      setUserReview("");
+    }
+  });
+  
+  const revertMutation = trpc.abTesting.revertTemplateToVersion.useMutation({
+    onSuccess: () => {
+      refetch();
+      setVersionHistoryTemplate(null);
+    }
+  });
   
   const { data: sharingStats } = trpc.abTesting.getSharingStats.useQuery(
     undefined,
@@ -2138,6 +2176,14 @@ function ABTestTemplatesDialog({
               <Badge variant="secondary" className="ml-2">{communityTemplates.length}</Badge>
             )}
           </Button>
+          <Button
+            variant={activeTab === "top-rated" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("top-rated")}
+          >
+            <Star className="w-4 h-4 mr-2" />
+            Top Rated
+          </Button>
           {sharingStats && sharingStats.totalShared > 0 && (
             <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
               <Share2 className="w-4 h-4" />
@@ -2241,6 +2287,14 @@ function ABTestTemplatesDialog({
                                   <Share2 className="w-4 h-4" />
                                 </Button>
                               )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setVersionHistoryTemplate(template)}
+                                title="Version history"
+                              >
+                                <History className="w-4 h-4" />
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="ghost"
@@ -2388,9 +2442,20 @@ function ABTestTemplatesDialog({
                         </div>
                       )}
                       
-                      <div className="flex items-center text-xs text-muted-foreground">
-                        <Users className="w-3 h-3 mr-1" />
-                        Copied {template.shareCount || 0} times
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center">
+                          <Users className="w-3 h-3 mr-1" />
+                          Copied {template.shareCount || 0} times
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2"
+                          onClick={() => setRatingTemplate(template)}
+                        >
+                          <Star className="w-3 h-3 mr-1" />
+                          Rate
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -2398,6 +2463,220 @@ function ABTestTemplatesDialog({
               </div>
             )}
           </>
+        )}
+        
+        {/* Top Rated Tab */}
+        {activeTab === "top-rated" && (
+          <>
+            {isTopRatedLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin" />
+              </div>
+            ) : !topRatedTemplates || topRatedTemplates.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Star className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No rated templates yet.</p>
+                <p className="text-sm mt-2">Rate community templates to see them here!</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {topRatedTemplates.map(({ template, averageRating, totalRatings }) => (
+                  <Card key={template.id} className="relative">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <CardTitle className="text-base">{template.name}</CardTitle>
+                          <div className="flex items-center gap-2">
+                            <Badge className={getCategoryColor(template.category)}>
+                              {template.category}
+                            </Badge>
+                            <div className="flex items-center text-yellow-500">
+                              {[1, 2, 3, 4, 5].map((star) => (
+                                <Star
+                                  key={star}
+                                  className={`w-3 h-3 ${star <= Math.round(averageRating) ? 'fill-current' : ''}`}
+                                />
+                              ))}
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                ({totalRatings})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => copyMutation.mutate({ templateId: template.id })}
+                          disabled={copyMutation.isPending}
+                        >
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copy
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {template.description && (
+                        <p className="text-sm text-muted-foreground">{template.description}</p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="p-2 bg-muted rounded">
+                          <div className="font-medium text-xs text-muted-foreground mb-1">
+                            {template.variantALabel || "Variant A"}
+                          </div>
+                          <div className="text-xs line-clamp-2">{template.variantATemplate}</div>
+                        </div>
+                        <div className="p-2 bg-muted rounded">
+                          <div className="font-medium text-xs text-muted-foreground mb-1">
+                            {template.variantBLabel || "Variant B"}
+                          </div>
+                          <div className="text-xs line-clamp-2">{template.variantBTemplate}</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+        
+        {/* Version History Dialog */}
+        {versionHistoryTemplate && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-lg mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="w-5 h-5" />
+                  Version History
+                </CardTitle>
+                <CardDescription>
+                  "{versionHistoryTemplate.name}" - View and restore previous versions
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="overflow-y-auto flex-1">
+                {!versionHistory || versionHistory.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <History className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p>No version history yet.</p>
+                    <p className="text-sm mt-2">Versions are created when you edit the template.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {versionHistory.map((version: any) => (
+                      <div key={version.id} className="p-3 border rounded-lg">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="font-medium">Version {version.versionNumber}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {new Date(version.createdAt).toLocaleString()}
+                            </div>
+                            {version.changeNote && (
+                              <div className="text-sm mt-1">{version.changeNote}</div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              if (confirm(`Revert to version ${version.versionNumber}?`)) {
+                                revertMutation.mutate({
+                                  templateId: versionHistoryTemplate.id,
+                                  versionId: version.id
+                                });
+                              }
+                            }}
+                            disabled={revertMutation.isPending}
+                          >
+                            <RotateCcw className="w-4 h-4 mr-1" />
+                            Revert
+                          </Button>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                          <div className="p-2 bg-muted rounded">
+                            <div className="font-medium text-muted-foreground mb-1">
+                              {version.variantALabel || "Variant A"}
+                            </div>
+                            <div className="line-clamp-2">{version.variantATemplate}</div>
+                          </div>
+                          <div className="p-2 bg-muted rounded">
+                            <div className="font-medium text-muted-foreground mb-1">
+                              {version.variantBLabel || "Variant B"}
+                            </div>
+                            <div className="line-clamp-2">{version.variantBTemplate}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+              <div className="flex justify-end p-4 border-t">
+                <Button variant="outline" onClick={() => setVersionHistoryTemplate(null)}>
+                  Close
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+        
+        {/* Rating Dialog */}
+        {ratingTemplate && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-yellow-500" />
+                  Rate Template
+                </CardTitle>
+                <CardDescription>
+                  Rate "{ratingTemplate.name}" to help others find great templates
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-center gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      onClick={() => setUserRating(star)}
+                      className="p-1 hover:scale-110 transition-transform"
+                    >
+                      <Star
+                        className={`w-8 h-8 ${star <= userRating ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`}
+                      />
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <Label>Review (optional)</Label>
+                  <Textarea
+                    value={userReview}
+                    onChange={(e) => setUserReview(e.target.value)}
+                    placeholder="Share your experience with this template..."
+                    rows={3}
+                  />
+                </div>
+              </CardContent>
+              <div className="flex justify-end gap-2 p-4 border-t">
+                <Button variant="outline" onClick={() => {
+                  setRatingTemplate(null);
+                  setUserRating(0);
+                  setUserReview("");
+                }}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => rateMutation.mutate({
+                    templateId: ratingTemplate.id,
+                    rating: userRating,
+                    review: userReview || undefined
+                  })}
+                  disabled={userRating === 0 || rateMutation.isPending}
+                >
+                  {rateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                  Submit Rating
+                </Button>
+              </div>
+            </Card>
+          </div>
         )}
         
         <DialogFooter>
