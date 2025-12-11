@@ -717,3 +717,40 @@
 - [x] Show top performing templates with rankings
 - [x] Add trending templates calculation (activity score)
 - [x] Write tests for template analytics (566 tests passing)
+
+
+## Template Collections/Bundles (New)
+- [x] Create template_collections table in schema
+- [x] Create template_collection_items junction table
+- [x] Create user_template_usage table for tracking
+- [x] Add CRUD operations for collections (create, update, delete)
+- [x] Add ability to add/remove templates from collections
+- [x] Build collections UI in templates dialog (new "Collections" tab)
+- [x] Add color picker for collection customization
+- [x] Add public/private toggle for collections
+- [x] Show collections in marketplace (public collections)
+- [x] Add "Add to Collection" button on template cards
+- [x] Add collection detail view with template list
+- [x] Add download collection functionality
+- [x] Write tests for collections functionality (589 tests passing)
+
+## Rating Reminder System (New)
+- [x] Track template usage count per user
+- [x] Create reminder logic after 3+ uses
+- [x] Build rating reminder dialog component
+- [x] Show reminder when user uses unrated template 3+ times
+- [x] Allow dismissing reminder (don't show again for this template)
+- [x] Add rating reminder alert in Collections tab
+- [x] Add "Rate Now" quick action button
+- [x] Write tests for reminder functionality (589 tests passing)
+
+## Social Sharing Buttons (New)
+- [x] Add share buttons to marketplace template cards
+- [x] Add share buttons to template preview dialog
+- [x] Generate shareable URLs for templates
+- [x] Support LinkedIn sharing (opens share dialog)
+- [x] Support Twitter/X sharing (opens tweet composer)
+- [x] Support copy link functionality (clipboard API)
+- [x] Add share dialog with social buttons and link copy
+- [x] Add template preview in share dialog
+- [x] Write tests for sharing functionality (589 tests passing)

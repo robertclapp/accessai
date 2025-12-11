@@ -28,6 +28,11 @@ import {
   Sparkles,
   ChevronRight,
   ArrowLeft,
+  Share2,
+  ExternalLink,
+  Link2,
+  Twitter,
+  Linkedin,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -52,6 +57,7 @@ export default function Marketplace() {
   const [category, setCategory] = useState("all");
   const [sortBy, setSortBy] = useState<"popular" | "rating" | "newest" | "downloads">("popular");
   const [previewTemplate, setPreviewTemplate] = useState<any>(null);
+  const [shareTemplate, setShareTemplate] = useState<any>(null);
   
   const utils = trpc.useUtils();
   
@@ -103,6 +109,37 @@ export default function Marketplace() {
         ))}
       </div>
     );
+  };
+  
+  const handleShare = (template: any) => {
+    setShareTemplate(template);
+  };
+  
+  const getShareUrl = (template: any) => {
+    return `${window.location.origin}/marketplace?template=${template.id}`;
+  };
+  
+  const shareToLinkedIn = (template: any) => {
+    const url = encodeURIComponent(getShareUrl(template));
+    const title = encodeURIComponent(`Check out this A/B test template: ${template.name}`);
+    window.open(`https://www.linkedin.com/sharing/share-offsite/?url=${url}`, '_blank', 'width=600,height=400');
+    toast.success('Opening LinkedIn...');
+  };
+  
+  const shareToTwitter = (template: any) => {
+    const url = encodeURIComponent(getShareUrl(template));
+    const text = encodeURIComponent(`Check out this A/B test template: "${template.name}" - Great for ${template.category} experiments!`);
+    window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank', 'width=600,height=400');
+    toast.success('Opening Twitter/X...');
+  };
+  
+  const copyShareLink = async (template: any) => {
+    try {
+      await navigator.clipboard.writeText(getShareUrl(template));
+      toast.success('Link copied to clipboard!');
+    } catch {
+      toast.error('Failed to copy link');
+    }
   };
 
   return (
@@ -332,6 +369,14 @@ export default function Marketplace() {
                           )}
                           Download
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleShare(template)}
+                          title="Share template"
+                        >
+                          <Share2 className="w-4 h-4" />
+                        </Button>
                       </div>
                     </CardContent>
                   </Card>
@@ -417,6 +462,15 @@ export default function Marketplace() {
               Close
             </Button>
             <Button
+              variant="outline"
+              onClick={() => {
+                handleShare(previewTemplate);
+              }}
+            >
+              <Share2 className="w-4 h-4 mr-2" />
+              Share
+            </Button>
+            <Button
               onClick={() => {
                 handleDownload(previewTemplate?.id);
                 setPreviewTemplate(null);
@@ -429,6 +483,89 @@ export default function Marketplace() {
                 <Download className="w-4 h-4 mr-2" />
               )}
               Download to My Library
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Share Dialog */}
+      <Dialog open={!!shareTemplate} onOpenChange={(open) => !open && setShareTemplate(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Share2 className="w-5 h-5" />
+              Share Template
+            </DialogTitle>
+            <DialogDescription>
+              Share "{shareTemplate?.name}" with your network
+            </DialogDescription>
+          </DialogHeader>
+          
+          {shareTemplate && (
+            <div className="space-y-4">
+              {/* Social Share Buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  variant="outline"
+                  className="h-16 flex-col gap-2"
+                  onClick={() => shareToLinkedIn(shareTemplate)}
+                >
+                  <Linkedin className="w-6 h-6 text-blue-600" />
+                  <span className="text-sm">LinkedIn</span>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-16 flex-col gap-2"
+                  onClick={() => shareToTwitter(shareTemplate)}
+                >
+                  <Twitter className="w-6 h-6 text-sky-500" />
+                  <span className="text-sm">Twitter/X</span>
+                </Button>
+              </div>
+              
+              {/* Copy Link */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Or copy link</label>
+                <div className="flex gap-2">
+                  <Input
+                    readOnly
+                    value={getShareUrl(shareTemplate)}
+                    className="text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => copyShareLink(shareTemplate)}
+                  >
+                    <Link2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Template Preview */}
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge className={getCategoryColor(shareTemplate.category)}>
+                    {shareTemplate.category}
+                  </Badge>
+                  {shareTemplate.averageRating > 0 && (
+                    <div className="flex items-center gap-1">
+                      {renderStars(shareTemplate.averageRating)}
+                    </div>
+                  )}
+                </div>
+                <p className="text-sm font-medium">{shareTemplate.name}</p>
+                {shareTemplate.description && (
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                    {shareTemplate.description}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShareTemplate(null)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

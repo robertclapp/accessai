@@ -4942,3 +4942,491 @@ export async function getTrendingTemplates(limit: number = 10): Promise<Array<{
   
   return results.filter((r): r is NonNullable<typeof r> => r !== null);
 }
+
+
+// ==========================================
+// Template Collections Functions
+// ==========================================
+
+import { templateCollections, templateCollectionItems, userTemplateUsage } from "../drizzle/schema";
+import type { TemplateCollection, InsertTemplateCollection, TemplateCollectionItem, UserTemplateUsage } from "../drizzle/schema";
+
+/**
+ * Create a new template collection
+ */
+export async function createTemplateCollection(
+  userId: number,
+  data: { name: string; description?: string; isPublic?: boolean; color?: string }
+): Promise<TemplateCollection | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [result] = await db.insert(templateCollections).values({
+    userId,
+    name: data.name,
+    description: data.description || null,
+    isPublic: data.isPublic || false,
+    color: data.color || "#6366f1",
+  });
+  
+  const [collection] = await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.id, result.insertId))
+    .limit(1);
+  
+  return collection || null;
+}
+
+/**
+ * Get user's template collections
+ */
+export async function getUserCollections(userId: number): Promise<TemplateCollection[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.userId, userId))
+    .orderBy(desc(templateCollections.updatedAt));
+}
+
+/**
+ * Get a single collection with its templates
+ */
+export async function getCollectionWithTemplates(collectionId: number): Promise<{
+  collection: TemplateCollection;
+  templates: ABTestTemplate[];
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [collection] = await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.id, collectionId))
+    .limit(1);
+  
+  if (!collection) return null;
+  
+  // Get template IDs in this collection
+  const items = await db
+    .select()
+    .from(templateCollectionItems)
+    .where(eq(templateCollectionItems.collectionId, collectionId))
+    .orderBy(templateCollectionItems.sortOrder);
+  
+  // Get the templates
+  const templateIds = items.map(i => i.templateId);
+  if (templateIds.length === 0) {
+    return { collection, templates: [] };
+  }
+  
+  const templates = await db
+    .select()
+    .from(abTestTemplates)
+    .where(inArray(abTestTemplates.id, templateIds));
+  
+  // Sort templates by the order in collection
+  const sortedTemplates = templateIds
+    .map(id => templates.find(t => t.id === id))
+    .filter((t): t is ABTestTemplate => t !== undefined);
+  
+  return { collection, templates: sortedTemplates };
+}
+
+/**
+ * Update a template collection
+ */
+export async function updateTemplateCollection(
+  collectionId: number,
+  userId: number,
+  data: { name?: string; description?: string; isPublic?: boolean; color?: string }
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const updateData: Partial<InsertTemplateCollection> = {};
+  if (data.name !== undefined) updateData.name = data.name;
+  if (data.description !== undefined) updateData.description = data.description;
+  if (data.isPublic !== undefined) updateData.isPublic = data.isPublic;
+  if (data.color !== undefined) updateData.color = data.color;
+  
+  await db
+    .update(templateCollections)
+    .set(updateData)
+    .where(and(
+      eq(templateCollections.id, collectionId),
+      eq(templateCollections.userId, userId)
+    ));
+  
+  return true;
+}
+
+/**
+ * Delete a template collection
+ */
+export async function deleteTemplateCollection(collectionId: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  // Delete collection items first
+  await db
+    .delete(templateCollectionItems)
+    .where(eq(templateCollectionItems.collectionId, collectionId));
+  
+  // Delete the collection
+  await db
+    .delete(templateCollections)
+    .where(and(
+      eq(templateCollections.id, collectionId),
+      eq(templateCollections.userId, userId)
+    ));
+  
+  return true;
+}
+
+/**
+ * Add a template to a collection
+ */
+export async function addTemplateToCollection(
+  collectionId: number,
+  templateId: number,
+  userId: number
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  // Verify user owns the collection
+  const [collection] = await db
+    .select()
+    .from(templateCollections)
+    .where(and(
+      eq(templateCollections.id, collectionId),
+      eq(templateCollections.userId, userId)
+    ))
+    .limit(1);
+  
+  if (!collection) return false;
+  
+  // Check if already in collection
+  const [existing] = await db
+    .select()
+    .from(templateCollectionItems)
+    .where(and(
+      eq(templateCollectionItems.collectionId, collectionId),
+      eq(templateCollectionItems.templateId, templateId)
+    ))
+    .limit(1);
+  
+  if (existing) return true; // Already in collection
+  
+  // Get max sort order
+  const items = await db
+    .select({ sortOrder: templateCollectionItems.sortOrder })
+    .from(templateCollectionItems)
+    .where(eq(templateCollectionItems.collectionId, collectionId));
+  
+  const maxOrder = items.reduce((max, item) => Math.max(max, item.sortOrder || 0), 0);
+  
+  // Add to collection
+  await db.insert(templateCollectionItems).values({
+    collectionId,
+    templateId,
+    sortOrder: maxOrder + 1,
+  });
+  
+  // Update template count
+  await db
+    .update(templateCollections)
+    .set({ templateCount: sql`${templateCollections.templateCount} + 1` })
+    .where(eq(templateCollections.id, collectionId));
+  
+  return true;
+}
+
+/**
+ * Remove a template from a collection
+ */
+export async function removeTemplateFromCollection(
+  collectionId: number,
+  templateId: number,
+  userId: number
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  // Verify user owns the collection
+  const [collection] = await db
+    .select()
+    .from(templateCollections)
+    .where(and(
+      eq(templateCollections.id, collectionId),
+      eq(templateCollections.userId, userId)
+    ))
+    .limit(1);
+  
+  if (!collection) return false;
+  
+  // Remove from collection
+  await db
+    .delete(templateCollectionItems)
+    .where(and(
+      eq(templateCollectionItems.collectionId, collectionId),
+      eq(templateCollectionItems.templateId, templateId)
+    ));
+  
+  // Update template count
+  await db
+    .update(templateCollections)
+    .set({ templateCount: sql`GREATEST(${templateCollections.templateCount} - 1, 0)` })
+    .where(eq(templateCollections.id, collectionId));
+  
+  return true;
+}
+
+/**
+ * Get public collections for marketplace
+ */
+export async function getPublicCollections(options: {
+  limit?: number;
+  offset?: number;
+}): Promise<{ collections: Array<TemplateCollection & { creatorName?: string }>; total: number }> {
+  const db = await getDb();
+  if (!db) return { collections: [], total: 0 };
+  
+  const { limit = 20, offset = 0 } = options;
+  
+  const collections = await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.isPublic, true))
+    .orderBy(desc(templateCollections.downloadCount))
+    .limit(limit)
+    .offset(offset);
+  
+  // Get creator names
+  const userIds = Array.from(new Set(collections.map(c => c.userId)));
+  const usersData = userIds.length > 0 ? await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, userIds)) : [];
+  
+  const userMap = new Map(usersData.map(u => [u.id, u.name]));
+  
+  const collectionsWithCreator = collections.map(c => ({
+    ...c,
+    creatorName: userMap.get(c.userId) || undefined,
+  }));
+  
+  // Get total count
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(templateCollections)
+    .where(eq(templateCollections.isPublic, true));
+  
+  return { collections: collectionsWithCreator, total: count };
+}
+
+/**
+ * Download all templates from a collection
+ */
+export async function downloadCollection(collectionId: number, userId: number): Promise<{
+  success: boolean;
+  templatesAdded: number;
+}> {
+  const db = await getDb();
+  if (!db) return { success: false, templatesAdded: 0 };
+  
+  const collectionData = await getCollectionWithTemplates(collectionId);
+  if (!collectionData) return { success: false, templatesAdded: 0 };
+  
+  let templatesAdded = 0;
+  
+  for (const template of collectionData.templates) {
+    if (template.isPublic) {
+      const downloaded = await downloadMarketplaceTemplate(template.id, userId);
+      if (downloaded) templatesAdded++;
+    }
+  }
+  
+  // Increment download count
+  await db
+    .update(templateCollections)
+    .set({ downloadCount: sql`${templateCollections.downloadCount} + 1` })
+    .where(eq(templateCollections.id, collectionId));
+  
+  return { success: true, templatesAdded };
+}
+
+// ==========================================
+// User Template Usage & Rating Reminder Functions
+// ==========================================
+
+/**
+ * Track template usage and check if rating reminder should show
+ */
+export async function trackTemplateUsage(
+  userId: number,
+  templateId: number
+): Promise<{ shouldShowReminder: boolean; usageCount: number }> {
+  const db = await getDb();
+  if (!db) return { shouldShowReminder: false, usageCount: 0 };
+  
+  // Get or create usage record
+  const [existing] = await db
+    .select()
+    .from(userTemplateUsage)
+    .where(and(
+      eq(userTemplateUsage.userId, userId),
+      eq(userTemplateUsage.templateId, templateId)
+    ))
+    .limit(1);
+  
+  if (existing) {
+    // Update usage count
+    const newCount = (existing.usageCount || 0) + 1;
+    await db
+      .update(userTemplateUsage)
+      .set({
+        usageCount: newCount,
+        lastUsedAt: new Date(),
+      })
+      .where(eq(userTemplateUsage.id, existing.id));
+    
+    // Check if should show reminder (3+ uses, not rated, not dismissed)
+    const shouldShowReminder = newCount >= 3 && !existing.hasRated && !existing.reminderDismissed;
+    
+    return { shouldShowReminder, usageCount: newCount };
+  } else {
+    // Create new usage record
+    await db.insert(userTemplateUsage).values({
+      userId,
+      templateId,
+      usageCount: 1,
+      lastUsedAt: new Date(),
+    });
+    
+    return { shouldShowReminder: false, usageCount: 1 };
+  }
+}
+
+/**
+ * Mark that user has rated a template
+ */
+export async function markTemplateAsRated(userId: number, templateId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const [existing] = await db
+    .select()
+    .from(userTemplateUsage)
+    .where(and(
+      eq(userTemplateUsage.userId, userId),
+      eq(userTemplateUsage.templateId, templateId)
+    ))
+    .limit(1);
+  
+  if (existing) {
+    await db
+      .update(userTemplateUsage)
+      .set({ hasRated: true })
+      .where(eq(userTemplateUsage.id, existing.id));
+  } else {
+    await db.insert(userTemplateUsage).values({
+      userId,
+      templateId,
+      usageCount: 0,
+      hasRated: true,
+    });
+  }
+  
+  return true;
+}
+
+/**
+ * Dismiss rating reminder for a template
+ */
+export async function dismissRatingReminder(userId: number, templateId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const [existing] = await db
+    .select()
+    .from(userTemplateUsage)
+    .where(and(
+      eq(userTemplateUsage.userId, userId),
+      eq(userTemplateUsage.templateId, templateId)
+    ))
+    .limit(1);
+  
+  if (existing) {
+    await db
+      .update(userTemplateUsage)
+      .set({ reminderDismissed: true })
+      .where(eq(userTemplateUsage.id, existing.id));
+  } else {
+    await db.insert(userTemplateUsage).values({
+      userId,
+      templateId,
+      usageCount: 0,
+      reminderDismissed: true,
+    });
+  }
+  
+  return true;
+}
+
+/**
+ * Get user's template usage stats
+ */
+export async function getUserTemplateUsageStats(userId: number): Promise<UserTemplateUsage[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return await db
+    .select()
+    .from(userTemplateUsage)
+    .where(eq(userTemplateUsage.userId, userId))
+    .orderBy(desc(userTemplateUsage.lastUsedAt));
+}
+
+/**
+ * Get templates that need rating (used 3+ times, not rated, not dismissed)
+ */
+export async function getTemplatesNeedingRating(userId: number): Promise<Array<{
+  templateId: number;
+  usageCount: number;
+  templateName?: string;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const usageRecords = await db
+    .select()
+    .from(userTemplateUsage)
+    .where(and(
+      eq(userTemplateUsage.userId, userId),
+      gte(userTemplateUsage.usageCount, 3),
+      eq(userTemplateUsage.hasRated, false),
+      eq(userTemplateUsage.reminderDismissed, false)
+    ));
+  
+  // Get template names
+  const templateIds = usageRecords.map(r => r.templateId);
+  if (templateIds.length === 0) return [];
+  
+  const templates = await db
+    .select({ id: abTestTemplates.id, name: abTestTemplates.name })
+    .from(abTestTemplates)
+    .where(inArray(abTestTemplates.id, templateIds));
+  
+  const templateMap = new Map(templates.map(t => [t.id, t.name]));
+  
+  return usageRecords.map(r => ({
+    templateId: r.templateId,
+    usageCount: r.usageCount || 0,
+    templateName: templateMap.get(r.templateId),
+  }));
+}

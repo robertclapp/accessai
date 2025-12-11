@@ -1027,6 +1027,98 @@ export type InsertTemplateAnalytic = typeof templateAnalytics.$inferInsert;
 
 
 /**
+ * Template Collections - Group related templates together for easier discovery
+ */
+export const templateCollections = mysqlTable("template_collections", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** Collection name */
+  name: varchar("name", { length: 255 }).notNull(),
+  
+  /** Collection description */
+  description: text("description"),
+  
+  /** User who created this collection */
+  userId: int("userId").notNull(),
+  
+  /** Whether this collection is public */
+  isPublic: boolean("isPublic").default(false),
+  
+  /** Cover image URL */
+  coverImage: text("coverImage"),
+  
+  /** Color theme for the collection */
+  color: varchar("color", { length: 7 }).default("#6366f1"),
+  
+  /** Number of templates in this collection */
+  templateCount: int("templateCount").default(0),
+  
+  /** Number of times this collection has been downloaded */
+  downloadCount: int("downloadCount").default(0),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TemplateCollection = typeof templateCollections.$inferSelect;
+export type InsertTemplateCollection = typeof templateCollections.$inferInsert;
+
+
+/**
+ * Template Collection Items - Junction table for templates in collections
+ */
+export const templateCollectionItems = mysqlTable("template_collection_items", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** Collection ID */
+  collectionId: int("collectionId").notNull(),
+  
+  /** Template ID */
+  templateId: int("templateId").notNull(),
+  
+  /** Display order within collection */
+  sortOrder: int("sortOrder").default(0),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type TemplateCollectionItem = typeof templateCollectionItems.$inferSelect;
+export type InsertTemplateCollectionItem = typeof templateCollectionItems.$inferInsert;
+
+
+/**
+ * User Template Usage - Track how many times a user has used each template
+ */
+export const userTemplateUsage = mysqlTable("user_template_usage", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** User ID */
+  userId: int("userId").notNull(),
+  
+  /** Template ID */
+  templateId: int("templateId").notNull(),
+  
+  /** Number of times used */
+  usageCount: int("usageCount").default(0),
+  
+  /** Whether user has rated this template */
+  hasRated: boolean("hasRated").default(false),
+  
+  /** Whether user has dismissed the rating reminder */
+  reminderDismissed: boolean("reminderDismissed").default(false),
+  
+  /** Last time the template was used */
+  lastUsedAt: timestamp("lastUsedAt"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type UserTemplateUsage = typeof userTemplateUsage.$inferSelect;
+export type InsertUserTemplateUsage = typeof userTemplateUsage.$inferInsert;
+
+
+/**
  * Digest A/B Tests - Test different email digest formats to optimize engagement
  */
 export const digestABTests = mysqlTable("digest_ab_tests", {

@@ -12,7 +12,7 @@ import { notifyOwner } from "./_core/notification";
 // import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as db from "./db";
-import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete, getMarketplaceTemplates, downloadMarketplaceTemplate, getMarketplaceCategories, trackTemplateEvent, getTemplateAnalytics, getTemplateAnalyticsSummary, getTrendingTemplates } from "./db";
+import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete, getMarketplaceTemplates, downloadMarketplaceTemplate, getMarketplaceCategories, trackTemplateEvent, getTemplateAnalytics, getTemplateAnalyticsSummary, getTrendingTemplates, createTemplateCollection, getUserCollections, getCollectionWithTemplates, updateTemplateCollection, deleteTemplateCollection, addTemplateToCollection, removeTemplateFromCollection, getPublicCollections, downloadCollection, trackTemplateUsage, markTemplateAsRated, dismissRatingReminder, getUserTemplateUsageStats, getTemplatesNeedingRating } from "./db";
 import type { InsertPost } from "../drizzle/schema";
 import {
   generateVerificationToken,
@@ -3020,6 +3020,138 @@ ${aiContext}`
       .mutation(async ({ ctx, input }) => {
         const result = await importMultipleTemplates(ctx.user.id, input.templates);
         return result;
+      }),
+    
+    // Template Collections
+    /** Create a new template collection */
+    createCollection: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(255),
+        description: z.string().max(1000).optional(),
+        isPublic: z.boolean().optional(),
+        color: z.string().max(7).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const collection = await createTemplateCollection(ctx.user.id, input);
+        if (!collection) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Failed to create collection" });
+        }
+        return collection;
+      }),
+    
+    /** Get user's collections */
+    getCollections: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getUserCollections(ctx.user.id);
+      }),
+    
+    /** Get a collection with its templates */
+    getCollection: publicProcedure
+      .input(z.object({ collectionId: z.number() }))
+      .query(async ({ input }) => {
+        const result = await getCollectionWithTemplates(input.collectionId);
+        if (!result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Collection not found" });
+        }
+        return result;
+      }),
+    
+    /** Update a collection */
+    updateCollection: protectedProcedure
+      .input(z.object({
+        collectionId: z.number(),
+        name: z.string().min(1).max(255).optional(),
+        description: z.string().max(1000).optional(),
+        isPublic: z.boolean().optional(),
+        color: z.string().max(7).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { collectionId, ...data } = input;
+        const success = await updateTemplateCollection(collectionId, ctx.user.id, data);
+        return { success };
+      }),
+    
+    /** Delete a collection */
+    deleteCollection: protectedProcedure
+      .input(z.object({ collectionId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await deleteTemplateCollection(input.collectionId, ctx.user.id);
+        return { success };
+      }),
+    
+    /** Add a template to a collection */
+    addToCollection: protectedProcedure
+      .input(z.object({
+        collectionId: z.number(),
+        templateId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await addTemplateToCollection(input.collectionId, input.templateId, ctx.user.id);
+        return { success };
+      }),
+    
+    /** Remove a template from a collection */
+    removeFromCollection: protectedProcedure
+      .input(z.object({
+        collectionId: z.number(),
+        templateId: z.number(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await removeTemplateFromCollection(input.collectionId, input.templateId, ctx.user.id);
+        return { success };
+      }),
+    
+    /** Get public collections for marketplace */
+    getPublicCollections: publicProcedure
+      .input(z.object({
+        limit: z.number().min(1).max(50).optional(),
+        offset: z.number().min(0).optional(),
+      }))
+      .query(async ({ input }) => {
+        return await getPublicCollections(input);
+      }),
+    
+    /** Download all templates from a collection */
+    downloadCollection: protectedProcedure
+      .input(z.object({ collectionId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return await downloadCollection(input.collectionId, ctx.user.id);
+      }),
+    
+    // Template Usage Tracking & Rating Reminders
+    /** Track template usage and check for rating reminder */
+    trackUsage: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return await trackTemplateUsage(ctx.user.id, input.templateId);
+      }),
+    
+    /** Mark a template as rated (to stop reminders) */
+    markAsRated: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await markTemplateAsRated(ctx.user.id, input.templateId);
+        return { success };
+      }),
+    
+    /** Dismiss rating reminder for a template */
+    dismissReminder: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await dismissRatingReminder(ctx.user.id, input.templateId);
+        return { success };
+      }),
+    
+    /** Get user's template usage stats */
+    getUsageStats: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getUserTemplateUsageStats(ctx.user.id);
+      }),
+    
+    /** Get templates that need rating */
+    getTemplatesNeedingRating: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getTemplatesNeedingRating(ctx.user.id);
       }),
   }),
 

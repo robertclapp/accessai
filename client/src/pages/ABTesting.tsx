@@ -58,7 +58,11 @@ import {
   Tag,
   MessageSquare,
   Upload,
-  FileJson
+  FileJson,
+  FolderOpen,
+  FolderPlus,
+  Layers,
+  Palette
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -1969,7 +1973,12 @@ function ABTestTemplatesDialog({
     tags: [] as string[],
   });
   const [tagInput, setTagInput] = useState("");
-  const [activeTab, setActiveTab] = useState<"my" | "community" | "top-rated" | "analytics">("my");
+  const [activeTab, setActiveTab] = useState<"my" | "community" | "top-rated" | "analytics" | "collections">("my");
+  const [isCollectionCreateOpen, setIsCollectionCreateOpen] = useState(false);
+  const [selectedCollection, setSelectedCollection] = useState<any>(null);
+  const [addToCollectionTemplate, setAddToCollectionTemplate] = useState<any>(null);
+  const [newCollection, setNewCollection] = useState({ name: "", description: "", isPublic: false, color: "#6366f1" });
+  const [ratingReminderTemplate, setRatingReminderTemplate] = useState<any>(null);
   const [versionHistoryTemplate, setVersionHistoryTemplate] = useState<any>(null);
   const [ratingTemplate, setRatingTemplate] = useState<any>(null);
   const [userRating, setUserRating] = useState(0);
@@ -2080,6 +2089,76 @@ function ABTestTemplatesDialog({
     undefined,
     { enabled: open }
   );
+  
+  // Collections
+  const { data: collections, refetch: refetchCollections } = trpc.abTesting.getCollections.useQuery(
+    undefined,
+    { enabled: open }
+  );
+  
+  const { data: collectionData } = trpc.abTesting.getCollection.useQuery(
+    { collectionId: selectedCollection?.id || 0 },
+    { enabled: !!selectedCollection }
+  );
+  
+  const { data: templatesNeedingRating } = trpc.abTesting.getTemplatesNeedingRating.useQuery(
+    undefined,
+    { enabled: open }
+  );
+  
+  const createCollectionMutation = trpc.abTesting.createCollection.useMutation({
+    onSuccess: () => {
+      toast.success("Collection created!");
+      setIsCollectionCreateOpen(false);
+      setNewCollection({ name: "", description: "", isPublic: false, color: "#6366f1" });
+      refetchCollections();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const deleteCollectionMutation = trpc.abTesting.deleteCollection.useMutation({
+    onSuccess: () => {
+      toast.success("Collection deleted");
+      setSelectedCollection(null);
+      refetchCollections();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const addToCollectionMutation = trpc.abTesting.addToCollection.useMutation({
+    onSuccess: () => {
+      toast.success("Template added to collection!");
+      setAddToCollectionTemplate(null);
+      refetchCollections();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const removeFromCollectionMutation = trpc.abTesting.removeFromCollection.useMutation({
+    onSuccess: () => {
+      toast.success("Template removed from collection");
+      refetchCollections();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const trackUsageMutation = trpc.abTesting.trackUsage.useMutation({
+    onSuccess: (data) => {
+      if (data.shouldShowReminder) {
+        // Find the template to show reminder
+        const template = templates?.find(t => t.id === data.usageCount);
+        if (template) {
+          setRatingReminderTemplate(template);
+        }
+      }
+    },
+  });
+  
+  const dismissReminderMutation = trpc.abTesting.dismissReminder.useMutation({
+    onSuccess: () => {
+      setRatingReminderTemplate(null);
+    },
+  });
   
   const shareMutation = trpc.abTesting.shareTemplate.useMutation({
     onSuccess: () => {
@@ -2334,6 +2413,17 @@ function ABTestTemplatesDialog({
             <BarChart3 className="w-4 h-4 mr-2" />
             Analytics
           </Button>
+          <Button
+            variant={activeTab === "collections" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("collections")}
+          >
+            <Layers className="w-4 h-4 mr-2" />
+            Collections
+            {collections && collections.length > 0 && (
+              <Badge variant="secondary" className="ml-2">{collections.length}</Badge>
+            )}
+          </Button>
           {sharingStats && sharingStats.totalShared > 0 && (
             <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
               <Share2 className="w-4 h-4" />
@@ -2471,6 +2561,14 @@ function ABTestTemplatesDialog({
                                 title="Export template"
                               >
                                 <Download className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setAddToCollectionTemplate(template)}
+                                title="Add to collection"
+                              >
+                                <Layers className="w-4 h-4" />
                               </Button>
                               <Button
                                 size="sm"
@@ -2818,6 +2916,344 @@ function ABTestTemplatesDialog({
                   </a>
                 </Button>
               </CardContent>
+            </Card>
+          </div>
+        )}
+        
+        {/* Collections Tab */}
+        {activeTab === "collections" && (
+          <div className="space-y-4">
+            {/* Header with create button */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-medium">Your Collections</h3>
+                <p className="text-sm text-muted-foreground">Group related templates together for easier organization</p>
+              </div>
+              <Button onClick={() => setIsCollectionCreateOpen(true)}>
+                <FolderPlus className="w-4 h-4 mr-2" />
+                New Collection
+              </Button>
+            </div>
+            
+            {/* Rating Reminder Alert */}
+            {templatesNeedingRating && templatesNeedingRating.length > 0 && (
+              <Card className="border-yellow-500/50 bg-yellow-500/10">
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-3">
+                    <Star className="w-5 h-5 text-yellow-500" />
+                    <div className="flex-1">
+                      <p className="font-medium">Rate your frequently used templates!</p>
+                      <p className="text-sm text-muted-foreground">
+                        You've used {templatesNeedingRating.length} template(s) 3+ times without rating them.
+                      </p>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      if (templatesNeedingRating[0]) {
+                        const template = templates?.find(t => t.id === templatesNeedingRating[0].templateId);
+                        if (template) setRatingTemplate(template);
+                      }
+                    }}>
+                      Rate Now
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Collections Grid */}
+            {!collections || collections.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Layers className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No collections yet.</p>
+                <p className="text-sm mt-2">Create a collection to organize your templates!</p>
+              </div>
+            ) : selectedCollection ? (
+              /* Collection Detail View */
+              <div className="space-y-4">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedCollection(null)}>
+                  ← Back to Collections
+                </Button>
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-10 h-10 rounded-lg flex items-center justify-center"
+                          style={{ backgroundColor: (selectedCollection.color || '#6366f1') + '20', color: selectedCollection.color || '#6366f1' }}
+                        >
+                          <FolderOpen className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <CardTitle className="flex items-center gap-2">
+                            {selectedCollection.name}
+                            {selectedCollection.isPublic && <Globe className="w-4 h-4 text-muted-foreground" />}
+                          </CardTitle>
+                          {selectedCollection.description && (
+                            <CardDescription>{selectedCollection.description}</CardDescription>
+                          )}
+                        </div>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-destructive"
+                        onClick={() => {
+                          if (confirm('Delete this collection?')) {
+                            deleteCollectionMutation.mutate({ collectionId: selectedCollection.id });
+                          }
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {collectionData?.templates && collectionData.templates.length > 0 ? (
+                      <div className="grid gap-3">
+                        {collectionData.templates.map((template) => (
+                          <div key={template.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                            <div>
+                              <div className="font-medium">{template.name}</div>
+                              <div className="text-sm text-muted-foreground">{template.category}</div>
+                            </div>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => removeFromCollectionMutation.mutate({ 
+                                collectionId: selectedCollection.id, 
+                                templateId: template.id 
+                              })}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <FileStack className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p>No templates in this collection yet.</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              /* Collections List */
+              <div className="grid gap-4 md:grid-cols-2">
+                {collections.map((collection) => (
+                  <Card 
+                    key={collection.id} 
+                    className="cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => setSelectedCollection(collection)}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-10 h-10 rounded-lg flex items-center justify-center"
+                          style={{ backgroundColor: (collection.color || '#6366f1') + '20', color: collection.color || '#6366f1' }}
+                        >
+                          <FolderOpen className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            {collection.name}
+                            {collection.isPublic && <Globe className="w-3 h-3 text-muted-foreground" />}
+                          </CardTitle>
+                          <CardDescription className="text-xs">
+                            {collection.templateCount || 0} templates
+                          </CardDescription>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    {collection.description && (
+                      <CardContent className="pt-0">
+                        <p className="text-sm text-muted-foreground line-clamp-2">{collection.description}</p>
+                      </CardContent>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            )}
+            
+            {/* Create Collection Dialog */}
+            {isCollectionCreateOpen && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <Card className="w-full max-w-md mx-4">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <FolderPlus className="w-5 h-5" />
+                      Create Collection
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Name</Label>
+                      <Input
+                        value={newCollection.name}
+                        onChange={(e) => setNewCollection({ ...newCollection, name: e.target.value })}
+                        placeholder="My Template Collection"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Description (optional)</Label>
+                      <Textarea
+                        value={newCollection.description}
+                        onChange={(e) => setNewCollection({ ...newCollection, description: e.target.value })}
+                        placeholder="A collection of templates for..."
+                      />
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="space-y-2">
+                        <Label>Color</Label>
+                        <div className="flex gap-2">
+                          {['#6366f1', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'].map((color) => (
+                            <button
+                              key={color}
+                              className={`w-8 h-8 rounded-full border-2 ${newCollection.color === color ? 'border-foreground' : 'border-transparent'}`}
+                              style={{ backgroundColor: color }}
+                              onClick={() => setNewCollection({ ...newCollection, color })}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="isPublic"
+                          checked={newCollection.isPublic}
+                          onChange={(e) => setNewCollection({ ...newCollection, isPublic: e.target.checked })}
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor="isPublic" className="flex items-center gap-1">
+                          <Globe className="w-4 h-4" />
+                          Public
+                        </Label>
+                      </div>
+                    </div>
+                  </CardContent>
+                  <div className="flex justify-end gap-2 p-4 border-t">
+                    <Button variant="outline" onClick={() => setIsCollectionCreateOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button 
+                      onClick={() => createCollectionMutation.mutate(newCollection)}
+                      disabled={!newCollection.name || createCollectionMutation.isPending}
+                    >
+                      {createCollectionMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create'}
+                    </Button>
+                  </div>
+                </Card>
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Add to Collection Dialog */}
+        {addToCollectionTemplate && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Layers className="w-5 h-5" />
+                  Add to Collection
+                </CardTitle>
+                <CardDescription>
+                  Add "{addToCollectionTemplate.name}" to a collection
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {!collections || collections.length === 0 ? (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p>No collections yet.</p>
+                    <Button 
+                      variant="link" 
+                      onClick={() => {
+                        setAddToCollectionTemplate(null);
+                        setIsCollectionCreateOpen(true);
+                      }}
+                    >
+                      Create one first
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {collections.map((collection) => (
+                      <button
+                        key={collection.id}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors text-left"
+                        onClick={() => addToCollectionMutation.mutate({
+                          collectionId: collection.id,
+                          templateId: addToCollectionTemplate.id,
+                        })}
+                      >
+                        <div 
+                          className="w-8 h-8 rounded-lg flex items-center justify-center"
+                          style={{ backgroundColor: (collection.color || '#6366f1') + '20', color: collection.color || '#6366f1' }}
+                        >
+                          <FolderOpen className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-medium">{collection.name}</div>
+                          <div className="text-xs text-muted-foreground">{collection.templateCount || 0} templates</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+              <div className="flex justify-end p-4 border-t">
+                <Button variant="outline" onClick={() => setAddToCollectionTemplate(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+        
+        {/* Rating Reminder Dialog */}
+        {ratingReminderTemplate && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <Card className="w-full max-w-md mx-4">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-yellow-500" />
+                  Rate This Template?
+                </CardTitle>
+                <CardDescription>
+                  You've used "{ratingReminderTemplate.name}" multiple times. Would you like to rate it?
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Your rating helps other users discover great templates and helps template creators improve.
+                </p>
+              </CardContent>
+              <div className="flex justify-end gap-2 p-4 border-t">
+                <Button 
+                  variant="ghost" 
+                  onClick={() => {
+                    dismissReminderMutation.mutate({ templateId: ratingReminderTemplate.id });
+                  }}
+                >
+                  Don't ask again
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setRatingReminderTemplate(null)}
+                >
+                  Later
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setRatingTemplate(ratingReminderTemplate);
+                    setRatingReminderTemplate(null);
+                  }}
+                >
+                  <Star className="w-4 h-4 mr-2" />
+                  Rate Now
+                </Button>
+              </div>
             </Card>
           </div>
         )}
