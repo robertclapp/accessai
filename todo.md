@@ -790,3 +790,31 @@
 - [x] Add refresh recommendations button
 - [x] Add getRecommendationReasonText helper function
 - [x] Write tests for recommendation engine (615 tests passing)
+
+
+## My Followed Collections Page (New)
+- [ ] Create dedicated page for managing followed collections
+- [ ] Show all followed collections with details
+- [ ] Add notification toggle for each collection
+- [ ] Add unfollow button for each collection
+- [ ] Show recent templates added to followed collections
+- [ ] Add route to App.tsx
+- [ ] Write tests for the page
+
+## Weekly Digest Emails (New)
+- [ ] Create digest_email_preferences table
+- [ ] Create weekly_digest_logs table to track sent digests
+- [ ] Build digest generation function
+- [ ] Collect new templates from followed collections
+- [ ] Create email template for digest
+- [ ] Add digest preferences UI in settings
+- [ ] Write tests for digest functionality
+
+## Collaborative Collections (New)
+- [ ] Create collection_collaborators table
+- [ ] Add invite collaborator functionality
+- [ ] Add accept/decline invitation flow
+- [ ] Allow collaborators to add/remove templates
+- [ ] Show collaborator list on collection
+- [ ] Add collaborator management UI
+- [ ] Write tests for collaborative collections
