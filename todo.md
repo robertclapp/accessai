@@ -900,3 +900,39 @@
 - [x] Add Clear all filters button
 - [x] Add Refresh button for manual refresh
 - [x] Write tests for filtering (713 tests passing)
+
+## Branded HTML Email Templates (New)
+- [x] Create responsive HTML email template base (baseEmailTemplate)
+- [x] Add branded header with logo and colors (BRAND_COLORS)
+- [x] Create digest email template with sections (digestEmailTemplate)
+- [x] Create activity notification template (activityNotificationTemplate)
+- [x] Create welcome email template (welcomeEmailTemplate)
+- [x] Add unsubscribe link with token (generateUnsubscribeToken)
+- [x] Add token parsing for unsubscribe (parseUnsubscribeToken)
+- [x] Add formatTimeAgo helper for timestamps
+- [x] Write tests for email templates (722 tests passing)
+
+## Admin Scheduler Dashboard (New)
+- [x] Create admin-only scheduler page (/admin/scheduler route)
+- [x] Show all scheduled jobs with status (enabled/disabled)
+- [x] Display job history (last runs, success/failure, duration)
+- [x] Add manual trigger buttons (Run Now)
+- [x] Show next run times with countdown
+- [x] Add job enable/disable toggles
+- [x] Display success/failure rates (percentage)
+- [x] Add job stats cards (total jobs, active, success rate, total runs)
+- [x] Add scheduler_job_history table in schema
+- [x] Add logJobExecution, getJobHistory, getJobStats functions
+- [x] Write tests for admin dashboard (722 tests passing)
+
+## Push Notifications (New)
+- [x] Create service worker for push notifications (sw.js)
+- [x] Set up push subscription management (usePushNotifications hook)
+- [x] Create push notification endpoints (save/remove subscription)
+- [x] Add notification permission request UI
+- [x] Store push subscriptions in database (push_subscriptions table)
+- [x] Add push notification preferences (activity, digest, collection, marketing)
+- [x] Add VAPID key support for web push
+- [x] Add urlBase64ToUint8Array helper
+- [x] Write tests for push notifications (722 tests passing)
+- [ ] Write tests for push notifications

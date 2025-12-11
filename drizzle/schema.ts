@@ -1473,3 +1473,55 @@ export const collectionActivityFeed = mysqlTable("collection_activity_feed", {
 
 export type CollectionActivityFeed = typeof collectionActivityFeed.$inferSelect;
 export type InsertCollectionActivityFeed = typeof collectionActivityFeed.$inferInsert;
+
+/**
+ * Scheduler job execution history for admin monitoring
+ */
+export const schedulerJobHistory = mysqlTable("scheduler_job_history", {
+  id: int("id").autoincrement().primaryKey(),
+  jobId: varchar("jobId", { length: 100 }).notNull(),
+  jobName: varchar("jobName", { length: 255 }).notNull(),
+  status: mysqlEnum("status", ["success", "failure", "running", "skipped"]).notNull(),
+  startedAt: timestamp("startedAt").notNull(),
+  completedAt: timestamp("completedAt"),
+  durationMs: int("durationMs"),
+  resultSummary: text("resultSummary"),
+  errorMessage: text("errorMessage"),
+  itemsProcessed: int("itemsProcessed").default(0),
+  itemsSuccessful: int("itemsSuccessful").default(0),
+  itemsFailed: int("itemsFailed").default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/**
+ * Push notification subscriptions for service workers
+ */
+export const pushSubscriptions = mysqlTable("push_subscriptions", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  endpoint: text("endpoint").notNull(),
+  p256dhKey: text("p256dhKey").notNull(),
+  authKey: text("authKey").notNull(),
+  userAgent: text("userAgent"),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  lastUsedAt: timestamp("lastUsedAt"),
+});
+
+/**
+ * Push notification preferences per user
+ */
+export const pushNotificationPreferences = mysqlTable("push_notification_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull().unique(),
+  enabled: boolean("enabled").default(true).notNull(),
+  activityAlerts: boolean("activityAlerts").default(true).notNull(),
+  digestReminders: boolean("digestReminders").default(true).notNull(),
+  collaboratorUpdates: boolean("collaboratorUpdates").default(true).notNull(),
+  systemAnnouncements: boolean("systemAnnouncements").default(true).notNull(),
+  quietHoursEnabled: boolean("quietHoursEnabled").default(false).notNull(),
+  quietHoursStart: int("quietHoursStart").default(22), // 10 PM
+  quietHoursEnd: int("quietHoursEnd").default(8), // 8 AM
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});

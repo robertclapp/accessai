@@ -6761,3 +6761,393 @@ export async function getFilterableCollections(userId: number): Promise<{ id: nu
   
   return uniqueCollections;
 }
+
+
+// ============================================================
+// Scheduler Job History Functions
+// ============================================================
+
+import { schedulerJobHistory, pushSubscriptions, pushNotificationPreferences } from "../drizzle/schema";
+
+export async function logJobExecution(data: {
+  jobId: string;
+  jobName: string;
+  status: "success" | "failure" | "running" | "skipped";
+  startedAt: Date;
+  completedAt?: Date;
+  durationMs?: number;
+  resultSummary?: string;
+  errorMessage?: string;
+  itemsProcessed?: number;
+  itemsSuccessful?: number;
+  itemsFailed?: number;
+}): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const result = await db.insert(schedulerJobHistory).values({
+    jobId: data.jobId,
+    jobName: data.jobName,
+    status: data.status,
+    startedAt: data.startedAt,
+    completedAt: data.completedAt,
+    durationMs: data.durationMs,
+    resultSummary: data.resultSummary,
+    errorMessage: data.errorMessage,
+    itemsProcessed: data.itemsProcessed || 0,
+    itemsSuccessful: data.itemsSuccessful || 0,
+    itemsFailed: data.itemsFailed || 0,
+  });
+  return result[0].insertId;
+}
+
+export async function updateJobExecution(
+  id: number,
+  data: {
+    status?: "success" | "failure" | "running" | "skipped";
+    completedAt?: Date;
+    durationMs?: number;
+    resultSummary?: string;
+    errorMessage?: string;
+    itemsProcessed?: number;
+    itemsSuccessful?: number;
+    itemsFailed?: number;
+  }
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(schedulerJobHistory)
+    .set(data)
+    .where(eq(schedulerJobHistory.id, id));
+}
+
+export async function getJobHistory(options: {
+  jobId?: string;
+  status?: "success" | "failure" | "running" | "skipped";
+  limit?: number;
+  offset?: number;
+}): Promise<{
+  history: Array<{
+    id: number;
+    jobId: string;
+    jobName: string;
+    status: string;
+    startedAt: Date;
+    completedAt: Date | null;
+    durationMs: number | null;
+    resultSummary: string | null;
+    errorMessage: string | null;
+    itemsProcessed: number;
+    itemsSuccessful: number;
+    itemsFailed: number;
+  }>;
+  total: number;
+}> {
+  const db = await getDb();
+  if (!db) return { history: [], total: 0 };
+  const conditions: any[] = [];
+  
+  if (options.jobId) {
+    conditions.push(eq(schedulerJobHistory.jobId, options.jobId));
+  }
+  if (options.status) {
+    conditions.push(eq(schedulerJobHistory.status, options.status));
+  }
+  
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  
+  const [history, countResult] = await Promise.all([
+    db.select()
+      .from(schedulerJobHistory)
+      .where(whereClause)
+      .orderBy(desc(schedulerJobHistory.startedAt))
+      .limit(options.limit || 50)
+      .offset(options.offset || 0),
+    db.select({ count: count() })
+      .from(schedulerJobHistory)
+      .where(whereClause),
+  ]);
+  
+  return {
+    history: history.map(h => ({
+      id: h.id,
+      jobId: h.jobId,
+      jobName: h.jobName,
+      status: h.status,
+      startedAt: h.startedAt,
+      completedAt: h.completedAt,
+      durationMs: h.durationMs,
+      resultSummary: h.resultSummary,
+      errorMessage: h.errorMessage,
+      itemsProcessed: h.itemsProcessed || 0,
+      itemsSuccessful: h.itemsSuccessful || 0,
+      itemsFailed: h.itemsFailed || 0,
+    })),
+    total: countResult[0]?.count || 0,
+  };
+}
+
+export async function getJobStats(jobId?: string): Promise<{
+  totalRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  successRate: number;
+  avgDurationMs: number;
+  lastRun: Date | null;
+  lastSuccess: Date | null;
+  lastFailure: Date | null;
+}> {
+  const db = await getDb();
+  if (!db) return {
+    totalRuns: 0,
+    successfulRuns: 0,
+    failedRuns: 0,
+    successRate: 0,
+    avgDurationMs: 0,
+    lastRun: null,
+    lastSuccess: null,
+    lastFailure: null,
+  };
+  const whereClause = jobId ? eq(schedulerJobHistory.jobId, jobId) : undefined;
+  
+  const [stats, lastSuccess, lastFailure] = await Promise.all([
+    db.select({
+      totalRuns: count(),
+      successfulRuns: count(sql`CASE WHEN ${schedulerJobHistory.status} = 'success' THEN 1 END`),
+      failedRuns: count(sql`CASE WHEN ${schedulerJobHistory.status} = 'failure' THEN 1 END`),
+      avgDurationMs: sql<number>`AVG(${schedulerJobHistory.durationMs})`,
+      lastRun: sql<Date>`MAX(${schedulerJobHistory.startedAt})`,
+    })
+      .from(schedulerJobHistory)
+      .where(whereClause),
+    db.select({ date: schedulerJobHistory.startedAt })
+      .from(schedulerJobHistory)
+      .where(and(whereClause, eq(schedulerJobHistory.status, "success")))
+      .orderBy(desc(schedulerJobHistory.startedAt))
+      .limit(1),
+    db.select({ date: schedulerJobHistory.startedAt })
+      .from(schedulerJobHistory)
+      .where(and(whereClause, eq(schedulerJobHistory.status, "failure")))
+      .orderBy(desc(schedulerJobHistory.startedAt))
+      .limit(1),
+  ]);
+  
+  const s = stats[0];
+  const totalRuns = Number(s?.totalRuns) || 0;
+  const successfulRuns = Number(s?.successfulRuns) || 0;
+  
+  return {
+    totalRuns,
+    successfulRuns,
+    failedRuns: Number(s?.failedRuns) || 0,
+    successRate: totalRuns > 0 ? (successfulRuns / totalRuns) * 100 : 0,
+    avgDurationMs: Number(s?.avgDurationMs) || 0,
+    lastRun: s?.lastRun || null,
+    lastSuccess: lastSuccess[0]?.date || null,
+    lastFailure: lastFailure[0]?.date || null,
+  };
+}
+
+// ============================================================
+// Push Notification Functions
+// ============================================================
+
+export async function savePushSubscription(
+  userId: number,
+  subscription: {
+    endpoint: string;
+    keys: {
+      p256dh: string;
+      auth: string;
+    };
+  },
+  userAgent?: string
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  // Check if subscription already exists
+  const existing = await db.select()
+    .from(pushSubscriptions)
+    .where(and(
+      eq(pushSubscriptions.userId, userId),
+      eq(pushSubscriptions.endpoint, subscription.endpoint)
+    ))
+    .limit(1);
+  
+  if (existing.length > 0) {
+    // Update existing subscription
+    await db.update(pushSubscriptions)
+      .set({
+        p256dhKey: subscription.keys.p256dh,
+        authKey: subscription.keys.auth,
+        userAgent,
+        isActive: true,
+        lastUsedAt: new Date(),
+      })
+      .where(eq(pushSubscriptions.id, existing[0].id));
+    return existing[0].id;
+  }
+  
+  // Create new subscription
+  const result = await db.insert(pushSubscriptions).values({
+    userId,
+    endpoint: subscription.endpoint,
+    p256dhKey: subscription.keys.p256dh,
+    authKey: subscription.keys.auth,
+    userAgent,
+    isActive: true,
+  });
+  
+  return result[0].insertId;
+}
+
+export async function removePushSubscription(userId: number, endpoint: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const result = await db.delete(pushSubscriptions)
+    .where(and(
+      eq(pushSubscriptions.userId, userId),
+      eq(pushSubscriptions.endpoint, endpoint)
+    ));
+  return (result[0] as any).affectedRows > 0;
+}
+
+export async function getUserPushSubscriptions(userId: number): Promise<Array<{
+  id: number;
+  endpoint: string;
+  p256dhKey: string;
+  authKey: string;
+  userAgent: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  lastUsedAt: Date | null;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select()
+    .from(pushSubscriptions)
+    .where(and(
+      eq(pushSubscriptions.userId, userId),
+      eq(pushSubscriptions.isActive, true)
+    ));
+}
+
+export async function getAllActivePushSubscriptions(): Promise<Array<{
+  id: number;
+  userId: number;
+  endpoint: string;
+  p256dhKey: string;
+  authKey: string;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select({
+    id: pushSubscriptions.id,
+    userId: pushSubscriptions.userId,
+    endpoint: pushSubscriptions.endpoint,
+    p256dhKey: pushSubscriptions.p256dhKey,
+    authKey: pushSubscriptions.authKey,
+  })
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.isActive, true));
+}
+
+export async function deactivatePushSubscription(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(pushSubscriptions)
+    .set({ isActive: false })
+    .where(eq(pushSubscriptions.id, id));
+}
+
+export async function getPushNotificationPreferences(userId: number): Promise<{
+  enabled: boolean;
+  activityAlerts: boolean;
+  digestReminders: boolean;
+  collaboratorUpdates: boolean;
+  systemAnnouncements: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select()
+    .from(pushNotificationPreferences)
+    .where(eq(pushNotificationPreferences.userId, userId))
+    .limit(1);
+  
+  if (result.length === 0) return null;
+  
+  const p = result[0];
+  return {
+    enabled: p.enabled,
+    activityAlerts: p.activityAlerts,
+    digestReminders: p.digestReminders,
+    collaboratorUpdates: p.collaboratorUpdates,
+    systemAnnouncements: p.systemAnnouncements,
+    quietHoursEnabled: p.quietHoursEnabled,
+    quietHoursStart: p.quietHoursStart || 22,
+    quietHoursEnd: p.quietHoursEnd || 8,
+  };
+}
+
+export async function updatePushNotificationPreferences(
+  userId: number,
+  prefs: Partial<{
+    enabled: boolean;
+    activityAlerts: boolean;
+    digestReminders: boolean;
+    collaboratorUpdates: boolean;
+    systemAnnouncements: boolean;
+    quietHoursEnabled: boolean;
+    quietHoursStart: number;
+    quietHoursEnd: number;
+  }>
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  // Check if preferences exist
+  const existing = await db.select({ id: pushNotificationPreferences.id })
+    .from(pushNotificationPreferences)
+    .where(eq(pushNotificationPreferences.userId, userId))
+    .limit(1);
+  
+  if (existing.length > 0) {
+    await db.update(pushNotificationPreferences)
+      .set({ ...prefs, updatedAt: new Date() })
+      .where(eq(pushNotificationPreferences.userId, userId));
+  } else {
+    await db.insert(pushNotificationPreferences).values({
+      userId,
+      enabled: prefs.enabled ?? true,
+      activityAlerts: prefs.activityAlerts ?? true,
+      digestReminders: prefs.digestReminders ?? true,
+      collaboratorUpdates: prefs.collaboratorUpdates ?? true,
+      systemAnnouncements: prefs.systemAnnouncements ?? true,
+      quietHoursEnabled: prefs.quietHoursEnabled ?? false,
+      quietHoursStart: prefs.quietHoursStart ?? 22,
+      quietHoursEnd: prefs.quietHoursEnd ?? 8,
+    });
+  }
+}
+
+export function isInQuietHours(prefs: {
+  quietHoursEnabled: boolean;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+}): boolean {
+  if (!prefs.quietHoursEnabled) return false;
+  
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  if (prefs.quietHoursStart < prefs.quietHoursEnd) {
+    // Simple case: e.g., 8:00 to 22:00
+    return currentHour >= prefs.quietHoursStart && currentHour < prefs.quietHoursEnd;
+  } else {
+    // Wrapping case: e.g., 22:00 to 08:00 (overnight)
+    return currentHour >= prefs.quietHoursStart || currentHour < prefs.quietHoursEnd;
+  }
+}

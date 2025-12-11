@@ -3411,6 +3411,79 @@ ${aiContext}`
         const success = setJobEnabled(input.jobId, input.enabled);
         return { success };
       }),
+    
+    // Job history endpoints
+    getJobHistory: protectedProcedure
+      .input(z.object({
+        jobId: z.string().optional(),
+        status: z.enum(['success', 'failure', 'running', 'skipped']).optional(),
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+      }))
+      .query(async ({ input }) => {
+        const { getJobHistory } = await import('./db');
+        return getJobHistory(input);
+      }),
+    
+    getJobStats: protectedProcedure
+      .input(z.object({ jobId: z.string().optional() }))
+      .query(async ({ input }) => {
+        const { getJobStats } = await import('./db');
+        return getJobStats(input.jobId);
+      }),
+    
+    runJobManually: protectedProcedure
+      .input(z.object({ jobId: z.string() }))
+      .mutation(async ({ input }) => {
+        const { runJobManually } = await import('./jobs/cronScheduler');
+        const success = await runJobManually(input.jobId);
+        return { success };
+      }),
+    
+    // Push notification endpoints
+    savePushSubscription: protectedProcedure
+      .input(z.object({
+        endpoint: z.string(),
+        p256dh: z.string(),
+        auth: z.string(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { savePushSubscription } = await import('./db');
+        await savePushSubscription(ctx.user.id, {
+          endpoint: input.endpoint,
+          keys: {
+            p256dh: input.p256dh,
+            auth: input.auth,
+          },
+        });
+        return { success: true };
+      }),
+    
+    removePushSubscription: protectedProcedure
+      .input(z.object({ endpoint: z.string() }))
+      .mutation(async ({ ctx, input }) => {
+        const { removePushSubscription } = await import('./db');
+        await removePushSubscription(ctx.user.id, input.endpoint);
+        return { success: true };
+      }),
+    
+    getPushNotificationPreferences: protectedProcedure.query(async ({ ctx }) => {
+      const { getPushNotificationPreferences } = await import('./db');
+      return getPushNotificationPreferences(ctx.user.id);
+    }),
+    
+    updatePushNotificationPreferences: protectedProcedure
+      .input(z.object({
+        activityAlerts: z.boolean().optional(),
+        digestAlerts: z.boolean().optional(),
+        collectionAlerts: z.boolean().optional(),
+        marketingAlerts: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { updatePushNotificationPreferences } = await import('./db');
+        await updatePushNotificationPreferences(ctx.user.id, input);
+        return { success: true };
+      }),
   }),
 
   // ============================================

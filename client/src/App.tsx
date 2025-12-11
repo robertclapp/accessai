@@ -35,6 +35,7 @@ import ABTesting from "./pages/ABTesting";
 import MastodonTemplates from "./pages/MastodonTemplates";
 import Marketplace from "./pages/Marketplace";
 import FollowedCollections from "./pages/FollowedCollections";
+import AdminScheduler from "./pages/AdminScheduler";
 
 /** Protected Route wrapper */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -100,6 +101,7 @@ function Router() {
       <Route path="/templates">{() => <ProtectedRoute component={MastodonTemplates} />}</Route>
       <Route path="/marketplace" component={Marketplace} />
       <Route path="/followed-collections">{() => <ProtectedRoute component={FollowedCollections} />}</Route>
+      <Route path="/admin/scheduler">{() => <ProtectedRoute component={AdminScheduler} />}</Route>
       <Route path="/team">{() => <ProtectedRoute component={TeamManagement} />}</Route>
       <Route path="/settings">{() => <ProtectedRoute component={Settings} />}</Route>
       <Route path="/verify-email" component={VerifyEmail} />
