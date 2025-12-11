@@ -5,7 +5,7 @@
  * and viewing recent templates added to followed collections.
  */
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -39,12 +39,19 @@ import {
   UserMinus,
   Share2,
   Lock,
+  Filter,
+  Calendar,
+  ChevronDown,
+  RefreshCw,
 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { toast } from "sonner";
 import { Link } from "wouter";
 import { getLoginUrl } from "@/const";
+import { useWebSocket } from "@/hooks/useWebSocket";
 
 const COLLECTION_COLORS: Record<string, string> = {
   '#6366f1': 'bg-indigo-500',
@@ -61,6 +68,26 @@ export default function FollowedCollections() {
   const [lastSeenActivity, setLastSeenActivity] = useState<Date>(() => {
     const stored = localStorage.getItem('lastSeenActivity');
     return stored ? new Date(stored) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  });
+  
+  // Activity filtering state
+  const [filterActionTypes, setFilterActionTypes] = useState<string[]>([]);
+  const [filterCollectionIds, setFilterCollectionIds] = useState<number[]>([]);
+  const [filterDateRange, setFilterDateRange] = useState<'all' | '7d' | '30d' | '90d'>('all');
+  const [showFilters, setShowFilters] = useState(false);
+  
+  const utils = trpc.useUtils();
+  
+  // WebSocket for real-time activity notifications
+  const handleActivityNotification = useCallback(() => {
+    // Refetch activity feed when new activity comes in
+    utils.abTesting.getUserActivityFeed.invalidate();
+    utils.abTesting.getUnreadActivityCount.invalidate();
+  }, [utils]);
+  
+  const { isConnected: wsConnected } = useWebSocket({
+    onActivity: handleActivityNotification,
+    showToasts: true,
   });
   
   // Collaborative collections queries
@@ -94,8 +121,6 @@ export default function FollowedCollections() {
     },
     onError: (error) => toast.error(error.message),
   });
-  
-  const utils = trpc.useUtils();
   
   // Get followed collections
   const { data: followedCollections, isLoading } = trpc.abTesting.getFollowedCollections.useQuery(
@@ -629,13 +654,147 @@ export default function FollowedCollections() {
               <TabsContent value="activity" className="space-y-4 mt-4">
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Activity className="w-4 h-4" />
-                      Recent Activity
-                    </CardTitle>
-                    <CardDescription>
-                      Actions by collaborators on your shared collections
-                    </CardDescription>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <Activity className="w-4 h-4" />
+                          Recent Activity
+                          {wsConnected && (
+                            <Badge variant="outline" className="text-xs bg-green-50 text-green-600 border-green-200">
+                              Live
+                            </Badge>
+                          )}
+                        </CardTitle>
+                        <CardDescription>
+                          Actions by collaborators on your shared collections
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowFilters(!showFilters)}
+                          className={showFilters ? 'bg-accent' : ''}
+                        >
+                          <Filter className="w-4 h-4 mr-1" />
+                          Filters
+                          {(filterActionTypes.length > 0 || filterCollectionIds.length > 0 || filterDateRange !== 'all') && (
+                            <Badge variant="secondary" className="ml-1 text-xs">
+                              {filterActionTypes.length + filterCollectionIds.length + (filterDateRange !== 'all' ? 1 : 0)}
+                            </Badge>
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            activityFeedQuery.refetch();
+                            toast.success('Activity refreshed');
+                          }}
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                    
+                    {/* Filters Panel */}
+                    {showFilters && (
+                      <div className="mt-4 p-4 bg-muted/50 rounded-lg space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {/* Action Type Filter */}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Action Type</label>
+                            <Select
+                              value={filterActionTypes.length === 0 ? 'all' : filterActionTypes[0]}
+                              onValueChange={(value) => {
+                                if (value === 'all') {
+                                  setFilterActionTypes([]);
+                                } else {
+                                  setFilterActionTypes([value]);
+                                }
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All actions" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All actions</SelectItem>
+                                <SelectItem value="template_added">Template added</SelectItem>
+                                <SelectItem value="template_removed">Template removed</SelectItem>
+                                <SelectItem value="collaborator_invited">Collaborator invited</SelectItem>
+                                <SelectItem value="collaborator_joined">Collaborator joined</SelectItem>
+                                <SelectItem value="collaborator_left">Collaborator left</SelectItem>
+                                <SelectItem value="collaborator_removed">Collaborator removed</SelectItem>
+                                <SelectItem value="collection_updated">Collection updated</SelectItem>
+                                <SelectItem value="collection_shared">Collection shared</SelectItem>
+                                <SelectItem value="collection_unshared">Collection unshared</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          {/* Date Range Filter */}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Date Range</label>
+                            <Select
+                              value={filterDateRange}
+                              onValueChange={(value: 'all' | '7d' | '30d' | '90d') => setFilterDateRange(value)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All time" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All time</SelectItem>
+                                <SelectItem value="7d">Last 7 days</SelectItem>
+                                <SelectItem value="30d">Last 30 days</SelectItem>
+                                <SelectItem value="90d">Last 90 days</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          
+                          {/* Collection Filter */}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Collection</label>
+                            <Select
+                              value={filterCollectionIds.length === 0 ? 'all' : String(filterCollectionIds[0])}
+                              onValueChange={(value) => {
+                                if (value === 'all') {
+                                  setFilterCollectionIds([]);
+                                } else {
+                                  setFilterCollectionIds([parseInt(value)]);
+                                }
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="All collections" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="all">All collections</SelectItem>
+                                {followedCollections?.map((fc: any) => (
+                                  <SelectItem key={fc.collection.id} value={String(fc.collection.id)}>
+                                    {fc.collection.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        
+                        {/* Clear Filters */}
+                        {(filterActionTypes.length > 0 || filterCollectionIds.length > 0 || filterDateRange !== 'all') && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setFilterActionTypes([]);
+                              setFilterCollectionIds([]);
+                              setFilterDateRange('all');
+                            }}
+                          >
+                            Clear all filters
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </CardHeader>
                   <CardContent>
                     {activityFeedQuery.isLoading ? (

@@ -3354,6 +3354,63 @@ ${aiContext}`
       .query(async ({ ctx, input }) => {
         return await getUnreadActivityCount(ctx.user.id, input.since);
       }),
+    
+    getFilteredActivityFeed: protectedProcedure
+      .input(z.object({
+        actionTypes: z.array(z.string()).optional(),
+        collectionIds: z.array(z.number()).optional(),
+        startDate: z.date().optional(),
+        endDate: z.date().optional(),
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        const { getFilteredActivityFeed } = await import('./db');
+        return await getFilteredActivityFeed(ctx.user.id, input);
+      }),
+    
+    getActivityActionTypes: protectedProcedure.query(async () => {
+      const { getActivityActionTypes } = await import('./db');
+      return await getActivityActionTypes();
+    }),
+    
+    getFilterableCollections: protectedProcedure.query(async ({ ctx }) => {
+      const { getFilterableCollections } = await import('./db');
+      return await getFilterableCollections(ctx.user.id);
+    }),
+    
+    // Scheduler endpoints
+    getSchedulerStatus: protectedProcedure.query(async () => {
+      const { getSchedulerStatus } = await import('./jobs/cronScheduler');
+      return getSchedulerStatus();
+    }),
+    
+    getScheduledJobs: protectedProcedure.query(async () => {
+      const { getJobs } = await import('./jobs/cronScheduler');
+      return getJobs().map(job => ({
+        id: job.id,
+        name: job.name,
+        enabled: job.enabled,
+        lastRun: job.lastRun?.toISOString() || null,
+        nextRun: job.nextRun.toISOString(),
+      }));
+    }),
+    
+    runScheduledJob: protectedProcedure
+      .input(z.object({ jobId: z.string() }))
+      .mutation(async ({ input }) => {
+        const { runJobManually } = await import('./jobs/cronScheduler');
+        const success = await runJobManually(input.jobId);
+        return { success };
+      }),
+    
+    setJobEnabled: protectedProcedure
+      .input(z.object({ jobId: z.string(), enabled: z.boolean() }))
+      .mutation(async ({ input }) => {
+        const { setJobEnabled } = await import('./jobs/cronScheduler');
+        const success = setJobEnabled(input.jobId, input.enabled);
+        return { success };
+      }),
   }),
 
   // ============================================

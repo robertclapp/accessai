@@ -865,3 +865,38 @@
 - [x] Add getUserCollectionsActivityFeed for aggregated view
 - [x] Add getUnreadActivityCount for notification badge
 - [x] Write tests for activity feed (693 tests passing)
+
+## Real-Time Activity Notifications (New)
+- [x] Set up WebSocket server integration (server/_core/websocket.ts)
+- [x] Create activity broadcast function (notifyCollectionActivity)
+- [x] Build WebSocket client hook (useWebSocket)
+- [x] Add real-time notification toast
+- [x] Update activity feed in real-time via cache invalidation
+- [x] Add "Live" badge indicator when connected
+- [x] Add sendToUser, sendToUsers, broadcast functions
+- [x] Add getConnectedClientsCount, getConnectedUsersCount, isUserConnected utilities
+- [x] Write tests for WebSocket functionality (713 tests passing)
+
+## Cron Job Scheduler (New)
+- [x] Create cron job configuration system (server/jobs/cronScheduler.ts)
+- [x] Implement digest scheduling based on user preferences (daily/weekly/monthly)
+- [x] Add job status tracking (lastRun, nextRun, enabled)
+- [x] Create scheduler status endpoints (getSchedulerStatus, getScheduledJobs)
+- [x] Add runJobManually endpoint for manual triggering
+- [x] Add setJobEnabled endpoint for enabling/disabling jobs
+- [x] Register default jobs (weekly digest, auto-complete checks)
+- [x] Add cron expression parsing for flexible scheduling
+- [x] Write tests for cron scheduler (713 tests passing)
+
+## Activity Filtering (New)
+- [x] Add filter by action type (9 action types)
+- [x] Add filter by date range (all, 7d, 30d, 90d)
+- [x] Add filter by specific collection
+- [x] Build filter UI components (collapsible panel with dropdowns)
+- [x] Add getFilteredActivityFeed with pagination support
+- [x] Add getActivityActionTypes for filter options
+- [x] Add getFilterableCollections for collection filter options
+- [x] Add filter count badge on Filters button
+- [x] Add Clear all filters button
+- [x] Add Refresh button for manual refresh
+- [x] Write tests for filtering (713 tests passing)

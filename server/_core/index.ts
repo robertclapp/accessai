@@ -10,6 +10,8 @@ import sitemapRouter from "../sitemap";
 import digestTrackingRouter from "../digestTracking";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
+import { initializeWebSocket } from "./websocket";
+import { startScheduler } from "../jobs/cronScheduler";
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -53,6 +55,12 @@ async function startServer() {
       createContext,
     })
   );
+  
+  // Initialize WebSocket server for real-time notifications
+  initializeWebSocket(server);
+  
+  // Start the cron job scheduler
+  startScheduler();
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     await setupVite(app, server);

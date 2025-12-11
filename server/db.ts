@@ -6605,3 +6605,159 @@ export async function getUnreadActivityCount(
   
   return result[0]?.count || 0;
 }
+
+
+/**
+ * Get filtered activity feed for a user
+ */
+export async function getFilteredActivityFeed(
+  userId: number,
+  filters: {
+    actionTypes?: string[];
+    collectionIds?: number[];
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }
+): Promise<{ activities: any[]; total: number }> {
+  const db = await getDb();
+  if (!db) return { activities: [], total: 0 };
+  
+  const { actionTypes, collectionIds: filterCollectionIds, startDate, endDate, limit = 50, offset = 0 } = filters;
+  
+  // Get collections the user owns or collaborates on
+  const userCollections = await db
+    .select({ id: templateCollections.id })
+    .from(templateCollections)
+    .where(eq(templateCollections.userId, userId));
+  
+  const collaboratorCollections = await db
+    .select({ collectionId: collectionCollaborators.collectionId })
+    .from(collectionCollaborators)
+    .where(
+      and(
+        eq(collectionCollaborators.userId, userId),
+        eq(collectionCollaborators.status, 'accepted')
+      )
+    );
+  
+  let collectionIds = [
+    ...userCollections.map(c => c.id),
+    ...collaboratorCollections.map(c => c.collectionId),
+  ];
+  
+  // If specific collections are requested, filter to those
+  if (filterCollectionIds && filterCollectionIds.length > 0) {
+    collectionIds = collectionIds.filter(id => filterCollectionIds.includes(id));
+  }
+  
+  if (collectionIds.length === 0) return { activities: [], total: 0 };
+  
+  // Build conditions array
+  const conditions: any[] = [inArray(collectionActivityFeed.collectionId, collectionIds)];
+  
+  if (actionTypes && actionTypes.length > 0) {
+    // Cast to the enum type
+    const validActionTypes = actionTypes as ('template_added' | 'template_removed' | 'collaborator_invited' | 'collaborator_joined' | 'collaborator_left' | 'collaborator_removed' | 'collection_updated' | 'collection_shared' | 'collection_unshared')[];
+    conditions.push(inArray(collectionActivityFeed.actionType, validActionTypes));
+  }
+  
+  if (startDate) {
+    conditions.push(gte(collectionActivityFeed.createdAt, startDate));
+  }
+  
+  if (endDate) {
+    conditions.push(lte(collectionActivityFeed.createdAt, endDate));
+  }
+  
+  // Get total count
+  const countResult = await db
+    .select({ count: count() })
+    .from(collectionActivityFeed)
+    .where(and(...conditions));
+  
+  const total = countResult[0]?.count || 0;
+  
+  // Get activities with pagination
+  const activities = await db
+    .select({
+      id: collectionActivityFeed.id,
+      collectionId: collectionActivityFeed.collectionId,
+      userId: collectionActivityFeed.userId,
+      userName: collectionActivityFeed.userName,
+      actionType: collectionActivityFeed.actionType,
+      actionDetails: collectionActivityFeed.actionDetails,
+      message: collectionActivityFeed.message,
+      createdAt: collectionActivityFeed.createdAt,
+      collectionName: templateCollections.name,
+      collectionColor: templateCollections.color,
+    })
+    .from(collectionActivityFeed)
+    .innerJoin(templateCollections, eq(collectionActivityFeed.collectionId, templateCollections.id))
+    .where(and(...conditions))
+    .orderBy(desc(collectionActivityFeed.createdAt))
+    .limit(limit)
+    .offset(offset);
+  
+  return { activities, total };
+}
+
+/**
+ * Get available action types for filtering
+ */
+export async function getActivityActionTypes(): Promise<string[]> {
+  return [
+    'template_added',
+    'template_removed',
+    'collaborator_invited',
+    'collaborator_joined',
+    'collaborator_left',
+    'collaborator_removed',
+    'collection_updated',
+    'collection_shared',
+    'collection_unshared',
+  ];
+}
+
+/**
+ * Get collections available for filtering (user's collections)
+ */
+export async function getFilterableCollections(userId: number): Promise<{ id: number; name: string; color: string | null }[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  // Get collections the user owns
+  const ownedCollections = await db
+    .select({
+      id: templateCollections.id,
+      name: templateCollections.name,
+      color: templateCollections.color,
+    })
+    .from(templateCollections)
+    .where(eq(templateCollections.userId, userId));
+  
+  // Get collections the user collaborates on
+  const collaboratorCollections = await db
+    .select({
+      id: templateCollections.id,
+      name: templateCollections.name,
+      color: templateCollections.color,
+    })
+    .from(templateCollections)
+    .innerJoin(collectionCollaborators, eq(templateCollections.id, collectionCollaborators.collectionId))
+    .where(
+      and(
+        eq(collectionCollaborators.userId, userId),
+        eq(collectionCollaborators.status, 'accepted')
+      )
+    );
+  
+  // Combine and deduplicate
+  const allCollections = [...ownedCollections, ...collaboratorCollections];
+  const uniqueCollections = allCollections.filter((c, i, arr) => 
+    arr.findIndex(x => x.id === c.id) === i
+  );
+  
+  return uniqueCollections;
+}
