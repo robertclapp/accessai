@@ -1304,3 +1304,125 @@ export const templateVersions = mysqlTable("template_versions", {
 
 export type TemplateVersion = typeof templateVersions.$inferSelect;
 export type InsertTemplateVersion = typeof templateVersions.$inferInsert;
+
+
+/**
+ * Digest Email Preferences - User preferences for weekly digest emails
+ */
+export const digestEmailPreferences = mysqlTable("digest_email_preferences", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** User ID */
+  userId: int("userId").notNull().unique(),
+  
+  /** Whether digest emails are enabled */
+  enabled: boolean("enabled").default(true),
+  
+  /** Frequency: weekly, daily, monthly */
+  frequency: mysqlEnum("frequency", ["daily", "weekly", "monthly"]).default("weekly"),
+  
+  /** Preferred day of week for weekly digest (0=Sunday, 6=Saturday) */
+  preferredDay: int("preferredDay").default(1), // Monday
+  
+  /** Preferred hour (0-23) */
+  preferredHour: int("preferredHour").default(9), // 9 AM
+  
+  /** Include templates from followed collections */
+  includeFollowedCollections: boolean("includeFollowedCollections").default(true),
+  
+  /** Include trending templates */
+  includeTrending: boolean("includeTrending").default(true),
+  
+  /** Include personalized recommendations */
+  includeRecommendations: boolean("includeRecommendations").default(true),
+  
+  /** Maximum number of templates per section */
+  maxTemplatesPerSection: int("maxTemplatesPerSection").default(5),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DigestEmailPreference = typeof digestEmailPreferences.$inferSelect;
+export type InsertDigestEmailPreference = typeof digestEmailPreferences.$inferInsert;
+
+
+/**
+ * Weekly Digest Logs - Track sent digest emails
+ */
+export const weeklyDigestLogs = mysqlTable("weekly_digest_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** User ID */
+  userId: int("userId").notNull(),
+  
+  /** Digest period start date */
+  periodStart: timestamp("periodStart").notNull(),
+  
+  /** Digest period end date */
+  periodEnd: timestamp("periodEnd").notNull(),
+  
+  /** Number of templates included from followed collections */
+  followedCollectionTemplates: int("followedCollectionTemplates").default(0),
+  
+  /** Number of trending templates included */
+  trendingTemplates: int("trendingTemplates").default(0),
+  
+  /** Number of recommended templates included */
+  recommendedTemplates: int("recommendedTemplates").default(0),
+  
+  /** Whether the email was successfully sent */
+  sent: boolean("sent").default(false),
+  
+  /** Error message if sending failed */
+  errorMessage: text("errorMessage"),
+  
+  /** Email opened tracking */
+  opened: boolean("opened").default(false),
+  openedAt: timestamp("openedAt"),
+  
+  /** Click tracking */
+  clicked: boolean("clicked").default(false),
+  clickedAt: timestamp("clickedAt"),
+  
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type WeeklyDigestLog = typeof weeklyDigestLogs.$inferSelect;
+export type InsertWeeklyDigestLog = typeof weeklyDigestLogs.$inferInsert;
+
+
+/**
+ * Collection Collaborators - Users who can contribute to a collection
+ */
+export const collectionCollaborators = mysqlTable("collection_collaborators", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** Collection ID */
+  collectionId: int("collectionId").notNull(),
+  
+  /** User ID of the collaborator */
+  userId: int("userId").notNull(),
+  
+  /** Role: viewer, editor, admin */
+  role: mysqlEnum("role", ["viewer", "editor", "admin"]).default("editor"),
+  
+  /** Invitation status */
+  status: mysqlEnum("status", ["pending", "accepted", "declined"]).default("pending"),
+  
+  /** User who sent the invitation */
+  invitedBy: int("invitedBy").notNull(),
+  
+  /** Invitation message */
+  invitationMessage: text("invitationMessage"),
+  
+  /** When the invitation was accepted/declined */
+  respondedAt: timestamp("respondedAt"),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CollectionCollaborator = typeof collectionCollaborators.$inferSelect;
+export type InsertCollectionCollaborator = typeof collectionCollaborators.$inferInsert;

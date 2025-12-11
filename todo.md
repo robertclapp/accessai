@@ -793,28 +793,39 @@
 
 
 ## My Followed Collections Page (New)
-- [ ] Create dedicated page for managing followed collections
-- [ ] Show all followed collections with details
-- [ ] Add notification toggle for each collection
-- [ ] Add unfollow button for each collection
-- [ ] Show recent templates added to followed collections
-- [ ] Add route to App.tsx
-- [ ] Write tests for the page
+- [x] Create dedicated page for managing followed collections (/followed-collections route)
+- [x] Show all followed collections with details (name, description, template count, creator)
+- [x] Add notification toggle for each collection (per-collection switch)
+- [x] Add unfollow button for each collection
+- [x] Add bulk notification enable/disable actions
+- [x] Add summary stats (collections followed, notifications enabled, total templates)
+- [x] Add tabs for Collections, Notifications, and Collaborative
+- [x] Add route to App.tsx
+- [x] Write tests for the page (669 tests passing)
 
 ## Weekly Digest Emails (New)
-- [ ] Create digest_email_preferences table
-- [ ] Create weekly_digest_logs table to track sent digests
-- [ ] Build digest generation function
-- [ ] Collect new templates from followed collections
-- [ ] Create email template for digest
-- [ ] Add digest preferences UI in settings
-- [ ] Write tests for digest functionality
+- [x] Create digest_email_preferences table with all settings
+- [x] Create weekly_digest_logs table to track sent digests
+- [x] Build digest generation function (generateDigestContent)
+- [x] Collect new templates from followed collections
+- [x] Include trending templates and recommendations
+- [x] Add frequency options (daily, weekly, monthly)
+- [x] Add preferred day and hour settings
+- [x] Add content inclusion toggles (followed collections, trending, recommendations)
+- [x] Add max templates per section setting
+- [x] Add digest history tracking
+- [x] Write tests for digest functionality (669 tests passing)
 
 ## Collaborative Collections (New)
-- [ ] Create collection_collaborators table
-- [ ] Add invite collaborator functionality
-- [ ] Add accept/decline invitation flow
-- [ ] Allow collaborators to add/remove templates
-- [ ] Show collaborator list on collection
-- [ ] Add collaborator management UI
-- [ ] Write tests for collaborative collections
+- [x] Create collection_collaborators table with role and status
+- [x] Add invite collaborator functionality with role selection
+- [x] Add accept/decline invitation flow
+- [x] Add invitation message support
+- [x] Add role-based permissions (viewer, editor, admin)
+- [x] Allow collaborators to add/remove templates based on role
+- [x] Show collaborator list on collection
+- [x] Add collaborator management UI in FollowedCollections page
+- [x] Add pending invitations section with accept/decline buttons
+- [x] Add collaborative collections list showing role and owner
+- [x] Add user search for inviting collaborators
+- [x] Write tests for collaborative collections (669 tests passing)

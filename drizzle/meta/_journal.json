@@ -218,6 +218,13 @@
       "when": 1765471163212,
       "tag": "0030_whole_nemesis",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "5",
+      "when": 1765486931486,
+      "tag": "0031_milky_meteorite",
+      "breakpoints": true
     }
   ]
 }

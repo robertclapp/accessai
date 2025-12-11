@@ -5913,3 +5913,531 @@ export function getRecommendationReasonText(reason: string): string {
       return 'Recommended for you';
   }
 }
+
+
+// ============================================================================
+// DIGEST EMAIL FUNCTIONS
+// ============================================================================
+
+import { digestEmailPreferences, weeklyDigestLogs, collectionCollaborators } from "../drizzle/schema";
+
+/**
+ * Get user's digest email preferences
+ */
+export async function getDigestPreferences(userId: number) {
+  const db = await getDb();
+  if (!db) return {
+    enabled: true,
+    frequency: 'weekly',
+    preferredDay: 1,
+    preferredHour: 9,
+    includeFollowedCollections: true,
+    includeTrending: true,
+    includeRecommendations: true,
+    maxTemplatesPerSection: 5,
+  };
+  
+  const [prefs] = await db
+    .select()
+    .from(digestEmailPreferences)
+    .where(eq(digestEmailPreferences.userId, userId));
+  
+  return prefs || {
+    enabled: true,
+    frequency: 'weekly',
+    preferredDay: 1,
+    preferredHour: 9,
+    includeFollowedCollections: true,
+    includeTrending: true,
+    includeRecommendations: true,
+    maxTemplatesPerSection: 5,
+  };
+}
+
+/**
+ * Update user's digest email preferences
+ */
+export async function updateDigestPreferences(
+  userId: number,
+  prefs: {
+    enabled?: boolean;
+    frequency?: 'daily' | 'weekly' | 'monthly';
+    preferredDay?: number;
+    preferredHour?: number;
+    includeFollowedCollections?: boolean;
+    includeTrending?: boolean;
+    includeRecommendations?: boolean;
+    maxTemplatesPerSection?: number;
+  }
+) {
+  const db = await getDb();
+  if (!db) return { success: false };
+  
+  // Check if preferences exist
+  const [existing] = await db
+    .select()
+    .from(digestEmailPreferences)
+    .where(eq(digestEmailPreferences.userId, userId));
+  
+  if (existing) {
+    await db
+      .update(digestEmailPreferences)
+      .set(prefs)
+      .where(eq(digestEmailPreferences.userId, userId));
+  } else {
+    await db.insert(digestEmailPreferences).values({
+      userId,
+      ...prefs,
+    });
+  }
+  
+  return { success: true };
+}
+
+/**
+ * Generate weekly digest content for a user
+ */
+export async function generateDigestContent(userId: number) {
+  const db = await getDb();
+  if (!db) return { periodStart: new Date(), periodEnd: new Date(), content: { followedCollectionTemplates: [], trendingTemplates: [], recommendedTemplates: [] }, totalTemplates: 0 };
+  
+  // Get user preferences
+  const prefs = await getDigestPreferences(userId);
+  const maxTemplates = prefs.maxTemplatesPerSection || 5;
+  
+  // Calculate period (last 7 days)
+  const periodEnd = new Date();
+  const periodStart = new Date();
+  periodStart.setDate(periodStart.getDate() - 7);
+  
+  const content: {
+    followedCollectionTemplates: any[];
+    trendingTemplates: any[];
+    recommendedTemplates: any[];
+  } = {
+    followedCollectionTemplates: [],
+    trendingTemplates: [],
+    recommendedTemplates: [],
+  };
+  
+  // Get templates from followed collections
+  if (prefs.includeFollowedCollections) {
+    const followedCollections = await getFollowedCollections(userId);
+    const collectionIds = followedCollections.map(c => c.id);
+    
+    if (collectionIds.length > 0) {
+      const newTemplates = await db
+        .select({
+          id: abTestTemplates.id,
+          name: abTestTemplates.name,
+          category: abTestTemplates.category,
+          description: abTestTemplates.description,
+          createdAt: abTestTemplates.createdAt,
+        })
+        .from(templateCollectionItems)
+        .innerJoin(abTestTemplates, eq(templateCollectionItems.templateId, abTestTemplates.id))
+        .where(
+          and(
+            inArray(templateCollectionItems.collectionId, collectionIds),
+            gt(templateCollectionItems.createdAt, periodStart)
+          )
+        )
+        .limit(maxTemplates);
+      
+      content.followedCollectionTemplates = newTemplates;
+    }
+  }
+  
+  // Get trending templates
+  if (prefs.includeTrending) {
+    const trending = await db
+      .select({
+        id: abTestTemplates.id,
+        name: abTestTemplates.name,
+        category: abTestTemplates.category,
+        description: abTestTemplates.description,
+        shareCount: abTestTemplates.shareCount,
+      })
+      .from(abTestTemplates)
+      .where(eq(abTestTemplates.isPublic, true))
+      .orderBy(desc(abTestTemplates.shareCount))
+      .limit(maxTemplates);
+    
+    content.trendingTemplates = trending;
+  }
+  
+  // Get recommendations
+  if (prefs.includeRecommendations) {
+    const recommendations = await getRecommendations(userId, maxTemplates);
+    content.recommendedTemplates = recommendations;
+  }
+  
+  return {
+    periodStart,
+    periodEnd,
+    content,
+    totalTemplates: 
+      content.followedCollectionTemplates.length + 
+      content.trendingTemplates.length + 
+      content.recommendedTemplates.length,
+  };
+}
+
+/**
+ * Log a sent digest email
+ */
+export async function logDigestSent(
+  userId: number,
+  periodStart: Date,
+  periodEnd: Date,
+  stats: {
+    followedCollectionTemplates: number;
+    trendingTemplates: number;
+    recommendedTemplates: number;
+  },
+  success: boolean,
+  errorMessage?: string
+) {
+  const db = await getDb();
+  if (!db) return { success: false };
+  
+  await db.insert(weeklyDigestLogs).values({
+    userId,
+    periodStart,
+    periodEnd,
+    followedCollectionTemplates: stats.followedCollectionTemplates,
+    trendingTemplates: stats.trendingTemplates,
+    recommendedTemplates: stats.recommendedTemplates,
+    sent: success,
+    sentAt: success ? new Date() : null,
+    errorMessage: errorMessage || null,
+  });
+  
+  return { success: true };
+}
+
+/**
+ * Get digest history for a user
+ */
+export async function getDigestHistory(userId: number, limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(weeklyDigestLogs)
+    .where(eq(weeklyDigestLogs.userId, userId))
+    .orderBy(desc(weeklyDigestLogs.createdAt))
+    .limit(limit);
+}
+
+
+// ============================================================================
+// COLLABORATIVE COLLECTIONS FUNCTIONS
+// ============================================================================
+
+/**
+ * Invite a user to collaborate on a collection
+ */
+export async function inviteCollaborator(
+  collectionId: number,
+  invitedUserId: number,
+  invitedBy: number,
+  role: 'viewer' | 'editor' | 'admin' = 'editor',
+  message?: string
+) {
+  const db = await getDb();
+  if (!db) return { success: false, error: 'Database not available' };
+  
+  // Check if already a collaborator
+  const [existing] = await db
+    .select()
+    .from(collectionCollaborators)
+    .where(
+      and(
+        eq(collectionCollaborators.collectionId, collectionId),
+        eq(collectionCollaborators.userId, invitedUserId)
+      )
+    );
+  
+  if (existing) {
+    return { success: false, error: 'User is already a collaborator' };
+  }
+  
+  await db.insert(collectionCollaborators).values({
+    collectionId,
+    userId: invitedUserId,
+    role,
+    status: 'pending',
+    invitedBy,
+    invitationMessage: message || null,
+  });
+  
+  return { success: true };
+}
+
+/**
+ * Respond to a collaboration invitation
+ */
+export async function respondToInvitation(
+  collaboratorId: number,
+  userId: number,
+  accept: boolean
+) {
+  const db = await getDb();
+  if (!db) return { success: false, error: 'Database not available' };
+  
+  // Verify the invitation belongs to this user
+  const [invitation] = await db
+    .select()
+    .from(collectionCollaborators)
+    .where(
+      and(
+        eq(collectionCollaborators.id, collaboratorId),
+        eq(collectionCollaborators.userId, userId),
+        eq(collectionCollaborators.status, 'pending')
+      )
+    );
+  
+  if (!invitation) {
+    return { success: false, error: 'Invitation not found or already responded' };
+  }
+  
+  await db
+    .update(collectionCollaborators)
+    .set({
+      status: accept ? 'accepted' : 'declined',
+      respondedAt: new Date(),
+    })
+    .where(eq(collectionCollaborators.id, collaboratorId));
+  
+  return { success: true };
+}
+
+/**
+ * Get collaborators for a collection
+ */
+export async function getCollectionCollaborators(collectionId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const collaborators = await db
+    .select({
+      id: collectionCollaborators.id,
+      userId: collectionCollaborators.userId,
+      role: collectionCollaborators.role,
+      status: collectionCollaborators.status,
+      invitedBy: collectionCollaborators.invitedBy,
+      createdAt: collectionCollaborators.createdAt,
+      respondedAt: collectionCollaborators.respondedAt,
+      userName: users.name,
+      userEmail: users.email,
+    })
+    .from(collectionCollaborators)
+    .leftJoin(users, eq(collectionCollaborators.userId, users.id))
+    .where(eq(collectionCollaborators.collectionId, collectionId));
+  
+  return collaborators;
+}
+
+/**
+ * Get pending invitations for a user
+ */
+export async function getPendingInvitations(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const invitations = await db
+    .select({
+      id: collectionCollaborators.id,
+      collectionId: collectionCollaborators.collectionId,
+      role: collectionCollaborators.role,
+      invitationMessage: collectionCollaborators.invitationMessage,
+      createdAt: collectionCollaborators.createdAt,
+      collectionName: templateCollections.name,
+      collectionDescription: templateCollections.description,
+      collectionColor: templateCollections.color,
+      inviterName: users.name,
+    })
+    .from(collectionCollaborators)
+    .innerJoin(templateCollections, eq(collectionCollaborators.collectionId, templateCollections.id))
+    .leftJoin(users, eq(collectionCollaborators.invitedBy, users.id))
+    .where(
+      and(
+        eq(collectionCollaborators.userId, userId),
+        eq(collectionCollaborators.status, 'pending')
+      )
+    );
+  
+  return invitations;
+}
+
+/**
+ * Remove a collaborator from a collection
+ */
+export async function removeCollaborator(
+  collectionId: number,
+  collaboratorUserId: number,
+  requestingUserId: number
+) {
+  const db = await getDb();
+  if (!db) return { success: false, error: 'Database not available' };
+  
+  // Check if requesting user is the owner or admin
+  const [collection] = await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.id, collectionId));
+  
+  if (!collection) {
+    return { success: false, error: 'Collection not found' };
+  }
+  
+  const isOwner = collection.userId === requestingUserId;
+  
+  if (!isOwner) {
+    // Check if requesting user is an admin collaborator
+    const [requesterCollab] = await db
+      .select()
+      .from(collectionCollaborators)
+      .where(
+        and(
+          eq(collectionCollaborators.collectionId, collectionId),
+          eq(collectionCollaborators.userId, requestingUserId),
+          eq(collectionCollaborators.role, 'admin'),
+          eq(collectionCollaborators.status, 'accepted')
+        )
+      );
+    
+    if (!requesterCollab) {
+      return { success: false, error: 'Not authorized to remove collaborators' };
+    }
+  }
+  
+  await db
+    .delete(collectionCollaborators)
+    .where(
+      and(
+        eq(collectionCollaborators.collectionId, collectionId),
+        eq(collectionCollaborators.userId, collaboratorUserId)
+      )
+    );
+  
+  return { success: true };
+}
+
+/**
+ * Update collaborator role
+ */
+export async function updateCollaboratorRole(
+  collectionId: number,
+  collaboratorUserId: number,
+  newRole: 'viewer' | 'editor' | 'admin',
+  requestingUserId: number
+) {
+  const db = await getDb();
+  if (!db) return { success: false, error: 'Database not available' };
+  
+  // Check if requesting user is the owner
+  const [collection] = await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.id, collectionId));
+  
+  if (!collection || collection.userId !== requestingUserId) {
+    return { success: false, error: 'Only the collection owner can change roles' };
+  }
+  
+  await db
+    .update(collectionCollaborators)
+    .set({ role: newRole })
+    .where(
+      and(
+        eq(collectionCollaborators.collectionId, collectionId),
+        eq(collectionCollaborators.userId, collaboratorUserId)
+      )
+    );
+  
+  return { success: true };
+}
+
+/**
+ * Check if user can edit a collection (owner or editor/admin collaborator)
+ */
+export async function canEditCollection(collectionId: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  // Check if owner
+  const [collection] = await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.id, collectionId));
+  
+  if (!collection) return false;
+  if (collection.userId === userId) return true;
+  
+  // Check if editor or admin collaborator
+  const [collab] = await db
+    .select()
+    .from(collectionCollaborators)
+    .where(
+      and(
+        eq(collectionCollaborators.collectionId, collectionId),
+        eq(collectionCollaborators.userId, userId),
+        eq(collectionCollaborators.status, 'accepted'),
+        inArray(collectionCollaborators.role, ['editor', 'admin'])
+      )
+    );
+  
+  return !!collab;
+}
+
+/**
+ * Get collections where user is a collaborator
+ */
+export async function getCollaborativeCollections(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const collections = await db
+    .select({
+      id: templateCollections.id,
+      name: templateCollections.name,
+      description: templateCollections.description,
+      color: templateCollections.color,
+      isPublic: templateCollections.isPublic,
+      templateCount: templateCollections.templateCount,
+      role: collectionCollaborators.role,
+      ownerName: users.name,
+    })
+    .from(collectionCollaborators)
+    .innerJoin(templateCollections, eq(collectionCollaborators.collectionId, templateCollections.id))
+    .leftJoin(users, eq(templateCollections.userId, users.id))
+    .where(
+      and(
+        eq(collectionCollaborators.userId, userId),
+        eq(collectionCollaborators.status, 'accepted')
+      )
+    );
+  
+  return collections;
+}
+
+/**
+ * Search users by email for inviting collaborators
+ */
+export async function searchUsersByEmail(email: string, limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      email: users.email,
+    })
+    .from(users)
+    .where(like(users.email, `%${email}%`))
+    .limit(limit);
+}
