@@ -33,6 +33,12 @@ import {
   Link2,
   Twitter,
   Linkedin,
+  FolderOpen,
+  Bell,
+  BellOff,
+  Heart,
+  Lightbulb,
+  X,
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -67,6 +73,81 @@ export default function Marketplace() {
     sortBy,
     limit: 50,
   });
+  
+  // Featured collections
+  const { data: featuredCollections } = trpc.abTesting.getFeaturedCollections.useQuery({ limit: 4 });
+  
+  // Recommendations (only for logged in users)
+  const { data: recommendations } = trpc.abTesting.getRecommendations.useQuery(
+    { limit: 6 },
+    { enabled: !!user }
+  );
+  
+  // Followed collections
+  const { data: followedCollections } = trpc.abTesting.getFollowedCollections.useQuery(
+    undefined,
+    { enabled: !!user }
+  );
+  
+  // Follow/unfollow mutations
+  const followMutation = trpc.abTesting.followCollection.useMutation({
+    onSuccess: () => {
+      toast.success("Now following this collection!");
+      utils.abTesting.getFollowedCollections.invalidate();
+      utils.abTesting.getFeaturedCollections.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const unfollowMutation = trpc.abTesting.unfollowCollection.useMutation({
+    onSuccess: () => {
+      toast.success("Unfollowed collection");
+      utils.abTesting.getFollowedCollections.invalidate();
+      utils.abTesting.getFeaturedCollections.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  // Recommendation mutations
+  const dismissRecommendation = trpc.abTesting.dismissRecommendation.useMutation({
+    onSuccess: () => {
+      utils.abTesting.getRecommendations.invalidate();
+    },
+  });
+  
+  const generateRecommendations = trpc.abTesting.generateRecommendations.useMutation({
+    onSuccess: () => {
+      toast.success("Recommendations refreshed!");
+      utils.abTesting.getRecommendations.invalidate();
+    },
+  });
+  
+  const isFollowing = (collectionId: number) => {
+    return followedCollections?.some((c: any) => c.id === collectionId) || false;
+  };
+  
+  const handleFollowToggle = (collectionId: number) => {
+    if (!user) {
+      window.location.href = getLoginUrl();
+      return;
+    }
+    if (isFollowing(collectionId)) {
+      unfollowMutation.mutate({ collectionId });
+    } else {
+      followMutation.mutate({ collectionId });
+    }
+  };
+  
+  const getRecommendationReasonText = (reason: string) => {
+    switch (reason) {
+      case 'similar_category': return 'Based on your preferences';
+      case 'similar_tags': return 'Similar to templates you use';
+      case 'popular': return 'Popular in the community';
+      case 'highly_rated': return 'Highly rated';
+      case 'used_by_similar_users': return 'Used by similar creators';
+      default: return 'Recommended for you';
+    }
+  };
   
   const { data: categories } = trpc.abTesting.getMarketplaceCategories.useQuery();
   const { data: trending } = trpc.abTesting.getTrendingTemplates.useQuery({ limit: 5 });
@@ -222,6 +303,58 @@ export default function Marketplace() {
               </CardContent>
             </Card>
             
+            {/* Featured Collections */}
+            {featuredCollections && featuredCollections.length > 0 && (
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4 text-primary" />
+                    Featured Collections
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {featuredCollections.map((collection: any) => (
+                    <div
+                      key={collection.id}
+                      className="p-2 rounded-lg border hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: collection.color || '#6366f1' }}
+                          />
+                          <span className="text-sm font-medium truncate">{collection.name}</span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0"
+                          onClick={() => handleFollowToggle(collection.id)}
+                        >
+                          {isFollowing(collection.id) ? (
+                            <Heart className="w-3 h-3 fill-red-500 text-red-500" />
+                          ) : (
+                            <Heart className="w-3 h-3" />
+                          )}
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{collection.templateCount} templates</span>
+                        <span>•</span>
+                        <span>{collection.followerCount} followers</span>
+                      </div>
+                      {collection.creatorName && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          by {collection.creatorName}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+            
             {/* Trending */}
             {trending && trending.length > 0 && (
               <Card>
@@ -258,6 +391,96 @@ export default function Marketplace() {
           
           {/* Main Content */}
           <div className="lg:col-span-3 space-y-6">
+            {/* Personalized Recommendations */}
+            {user && recommendations && recommendations.length > 0 && (
+              <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Lightbulb className="w-5 h-5 text-primary" />
+                      Recommended for You
+                    </CardTitle>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => generateRecommendations.mutate()}
+                      disabled={generateRecommendations.isPending}
+                    >
+                      {generateRecommendations.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        "Refresh"
+                      )}
+                    </Button>
+                  </div>
+                  <CardDescription>
+                    Based on your usage patterns and preferences
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid md:grid-cols-3 gap-3">
+                    {recommendations.slice(0, 6).map((rec: any) => (
+                      <div
+                        key={rec.id}
+                        className="relative p-3 rounded-lg border bg-background hover:shadow-md transition-all cursor-pointer group"
+                        onClick={() => handlePreview(rec)}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="absolute top-1 right-1 h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            dismissRecommendation.mutate({ recommendationId: rec.recommendationId });
+                          }}
+                        >
+                          <X className="w-3 h-3" />
+                        </Button>
+                        <p className="text-sm font-medium truncate pr-6">{rec.name}</p>
+                        <Badge className={`${getCategoryColor(rec.category)} mt-1`} variant="outline">
+                          {rec.category}
+                        </Badge>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          {getRecommendationReasonText(rec.reason)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Followed Collections Alert */}
+            {user && followedCollections && followedCollections.length > 0 && (
+              <Card className="border-dashed">
+                <CardContent className="py-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Heart className="w-4 h-4 text-red-500" />
+                      <span className="text-sm">
+                        You're following <strong>{followedCollections.length}</strong> collection{followedCollections.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {followedCollections.slice(0, 3).map((c: any) => (
+                        <div
+                          key={c.id}
+                          className="w-4 h-4 rounded-full border-2 border-background"
+                          style={{ backgroundColor: c.color || '#6366f1' }}
+                          title={c.name}
+                        />
+                      ))}
+                      {followedCollections.length > 3 && (
+                        <span className="text-xs text-muted-foreground ml-1">
+                          +{followedCollections.length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
             {/* Sort Controls */}
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground">

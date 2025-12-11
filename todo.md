@@ -754,3 +754,39 @@
 - [x] Add share dialog with social buttons and link copy
 - [x] Add template preview in share dialog
 - [x] Write tests for sharing functionality (589 tests passing)
+
+
+## Featured Collections (New)
+- [x] Create getFeaturedCollections function in db.ts
+- [x] Create getTopPublicCollections function with sorting options
+- [x] Add isFeatured flag to template_collections table
+- [x] Add featured collections query to routers.ts
+- [x] Build Featured Collections section on marketplace sidebar
+- [x] Show collection cards with template count, follower count, and colors
+- [x] Add follow/unfollow heart button on collection cards
+- [x] Show creator name attribution
+- [x] Write tests for featured collections (615 tests passing)
+
+## Collection Following/Subscribing (New)
+- [x] Create collection_followers table in schema
+- [x] Add follow/unfollow collection functions
+- [x] Add isFollowingCollection check function
+- [x] Add toggleCollectionNotifications function
+- [x] Create notifyCollectionFollowers function for new template alerts
+- [x] Build follow button UI on collection cards (heart icon)
+- [x] Show followed collections indicator in marketplace
+- [x] Add follower count tracking on collections
+- [x] Write tests for collection following (615 tests passing)
+
+## Template Recommendation Engine (New)
+- [x] Create template_recommendations table in schema
+- [x] Create recommendation algorithm based on usage patterns
+- [x] Factor in user's category preferences from usage history
+- [x] Consider template popularity and share counts
+- [x] Find highly rated templates in preferred categories
+- [x] Build "Recommended for You" section on marketplace
+- [x] Add personalized suggestions with reason explanations
+- [x] Add dismiss recommendation functionality
+- [x] Add refresh recommendations button
+- [x] Add getRecommendationReasonText helper function
+- [x] Write tests for recommendation engine (615 tests passing)

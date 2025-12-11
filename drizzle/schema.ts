@@ -1056,6 +1056,15 @@ export const templateCollections = mysqlTable("template_collections", {
   /** Number of times this collection has been downloaded */
   downloadCount: int("downloadCount").default(0),
   
+  /** Number of followers */
+  followerCount: int("followerCount").default(0),
+  
+  /** Whether this collection is featured */
+  isFeatured: boolean("isFeatured").default(false),
+  
+  /** Average rating of templates in this collection */
+  averageRating: int("averageRating").default(0),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -1116,6 +1125,60 @@ export const userTemplateUsage = mysqlTable("user_template_usage", {
 
 export type UserTemplateUsage = typeof userTemplateUsage.$inferSelect;
 export type InsertUserTemplateUsage = typeof userTemplateUsage.$inferInsert;
+
+
+/**
+ * Collection Followers - Track users following collections
+ */
+export const collectionFollowers = mysqlTable("collection_followers", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** User ID */
+  userId: int("userId").notNull(),
+  
+  /** Collection ID */
+  collectionId: int("collectionId").notNull(),
+  
+  /** Whether to receive notifications for new templates */
+  notificationsEnabled: boolean("notificationsEnabled").default(true),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CollectionFollower = typeof collectionFollowers.$inferSelect;
+export type InsertCollectionFollower = typeof collectionFollowers.$inferInsert;
+
+
+/**
+ * Template Recommendations - Store precomputed recommendations for users
+ */
+export const templateRecommendations = mysqlTable("template_recommendations", {
+  id: int("id").autoincrement().primaryKey(),
+  
+  /** User ID */
+  userId: int("userId").notNull(),
+  
+  /** Template ID */
+  templateId: int("templateId").notNull(),
+  
+  /** Recommendation score (0-100) */
+  score: int("score").default(0),
+  
+  /** Reason for recommendation */
+  reason: mysqlEnum("reason", ["similar_category", "similar_tags", "popular", "highly_rated", "used_by_similar_users"]).default("popular"),
+  
+  /** Whether user has seen this recommendation */
+  seen: boolean("seen").default(false),
+  
+  /** Whether user has dismissed this recommendation */
+  dismissed: boolean("dismissed").default(false),
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type TemplateRecommendation = typeof templateRecommendations.$inferSelect;
+export type InsertTemplateRecommendation = typeof templateRecommendations.$inferInsert;
 
 
 /**

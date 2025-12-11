@@ -211,6 +211,13 @@
       "when": 1765461864979,
       "tag": "0029_nostalgic_sway",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "5",
+      "when": 1765471163212,
+      "tag": "0030_whole_nemesis",
+      "breakpoints": true
     }
   ]
 }

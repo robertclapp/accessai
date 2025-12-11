@@ -12,7 +12,7 @@ import { notifyOwner } from "./_core/notification";
 // import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as db from "./db";
-import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete, getMarketplaceTemplates, downloadMarketplaceTemplate, getMarketplaceCategories, trackTemplateEvent, getTemplateAnalytics, getTemplateAnalyticsSummary, getTrendingTemplates, createTemplateCollection, getUserCollections, getCollectionWithTemplates, updateTemplateCollection, deleteTemplateCollection, addTemplateToCollection, removeTemplateFromCollection, getPublicCollections, downloadCollection, trackTemplateUsage, markTemplateAsRated, dismissRatingReminder, getUserTemplateUsageStats, getTemplatesNeedingRating } from "./db";
+import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats, rateTemplate, getTemplateRatings, getUserTemplateRating, getTopRatedTemplates, scheduleDigestABTest, cancelScheduledDigestABTest, createTemplateVersion, getTemplateVersionHistory, revertTemplateToVersion, getTemplateVersion, exportTemplate, importTemplate, exportMultipleTemplates, importMultipleTemplates, checkDigestTestAutoComplete, autoCompleteDigestTest, updateDigestTestAutoCompleteSettings, processDigestTestsAutoComplete, getMarketplaceTemplates, downloadMarketplaceTemplate, getMarketplaceCategories, trackTemplateEvent, getTemplateAnalytics, getTemplateAnalyticsSummary, getTrendingTemplates, createTemplateCollection, getUserCollections, getCollectionWithTemplates, updateTemplateCollection, deleteTemplateCollection, addTemplateToCollection, removeTemplateFromCollection, getPublicCollections, downloadCollection, trackTemplateUsage, markTemplateAsRated, dismissRatingReminder, getUserTemplateUsageStats, getTemplatesNeedingRating, getFeaturedCollections, getTopPublicCollections, followCollection, unfollowCollection, getFollowedCollections, isFollowingCollection, toggleCollectionNotifications, notifyCollectionFollowers, generateRecommendations, getRecommendations, markRecommendationSeen, dismissRecommendation, getRecommendationReasonText } from "./db";
 import type { InsertPost } from "../drizzle/schema";
 import {
   generateVerificationToken,
@@ -3152,6 +3152,82 @@ ${aiContext}`
     getTemplatesNeedingRating: protectedProcedure
       .query(async ({ ctx }) => {
         return await getTemplatesNeedingRating(ctx.user.id);
+      }),
+    
+    // Featured Collections
+    getFeaturedCollections: publicProcedure
+      .input(z.object({ limit: z.number().optional() }).optional())
+      .query(async ({ input }) => {
+        return await getFeaturedCollections(input?.limit || 6);
+      }),
+    
+    getTopPublicCollections: publicProcedure
+      .input(z.object({
+        sortBy: z.enum(['followers', 'downloads', 'rating']).optional(),
+        limit: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return await getTopPublicCollections(input?.sortBy || 'followers', input?.limit || 10);
+      }),
+    
+    // Collection Following
+    followCollection: protectedProcedure
+      .input(z.object({
+        collectionId: z.number(),
+        notificationsEnabled: z.boolean().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return await followCollection(ctx.user.id, input.collectionId, input.notificationsEnabled ?? true);
+      }),
+    
+    unfollowCollection: protectedProcedure
+      .input(z.object({ collectionId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return await unfollowCollection(ctx.user.id, input.collectionId);
+      }),
+    
+    getFollowedCollections: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getFollowedCollections(ctx.user.id);
+      }),
+    
+    isFollowingCollection: protectedProcedure
+      .input(z.object({ collectionId: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await isFollowingCollection(ctx.user.id, input.collectionId);
+      }),
+    
+    toggleCollectionNotifications: protectedProcedure
+      .input(z.object({
+        collectionId: z.number(),
+        enabled: z.boolean(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return await toggleCollectionNotifications(ctx.user.id, input.collectionId, input.enabled);
+      }),
+    
+    // Template Recommendations
+    generateRecommendations: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        return await generateRecommendations(ctx.user.id);
+      }),
+    
+    getRecommendations: protectedProcedure
+      .input(z.object({ limit: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        return await getRecommendations(ctx.user.id, input?.limit || 10);
+      }),
+    
+    markRecommendationSeen: protectedProcedure
+      .input(z.object({ recommendationId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return await markRecommendationSeen(ctx.user.id, input.recommendationId);
+      }),
+    
+    dismissRecommendation: protectedProcedure
+      .input(z.object({ recommendationId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        return await dismissRecommendation(ctx.user.id, input.recommendationId);
       }),
   }),
 

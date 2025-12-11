@@ -1,4 +1,4 @@
-import { eq, and, desc, gte, lte, sql, or, like, asc, ne, inArray } from "drizzle-orm";
+import { eq, and, desc, gte, lte, sql, or, like, asc, ne, inArray, gt, notInArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   users,
@@ -35,7 +35,8 @@ import {
   digestDeliveryTracking, InsertDigestDeliveryTracking, DigestDeliveryTracking,
   templateCategories,
   abTestTemplates, InsertABTestTemplate, ABTestTemplate, InsertTemplateCategory, TemplateCategory,
-  digestABTests, InsertDigestABTest, DigestABTest
+  digestABTests, InsertDigestABTest, DigestABTest,
+  collectionFollowers, templateRecommendations
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -5429,4 +5430,486 @@ export async function getTemplatesNeedingRating(userId: number): Promise<Array<{
     usageCount: r.usageCount || 0,
     templateName: templateMap.get(r.templateId),
   }));
+}
+
+
+// ============================================
+// FEATURED COLLECTIONS
+// ============================================
+
+/** Get featured public collections for marketplace */
+export async function getFeaturedCollections(limit = 6) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const collections = await db
+    .select()
+    .from(templateCollections)
+    .where(and(
+      eq(templateCollections.isPublic, true),
+      or(
+        eq(templateCollections.isFeatured, true),
+        gt(templateCollections.followerCount, 0)
+      )
+    ))
+    .orderBy(
+      desc(templateCollections.isFeatured),
+      desc(templateCollections.followerCount),
+      desc(templateCollections.downloadCount)
+    )
+    .limit(limit);
+  
+  // Get creator names
+  const userIds = Array.from(new Set(collections.map((c: { userId: number }) => c.userId)));
+  const usersData = userIds.length > 0 ? await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, userIds as number[])) : [];
+  
+  const userMap = new Map(usersData.map((u: { id: number; name: string | null }) => [u.id, u.name]));
+  
+  return collections.map((c: any) => ({
+    ...c,
+    creatorName: userMap.get(c.userId) || undefined,
+  }));
+}
+
+/** Get top public collections by various metrics */
+export async function getTopPublicCollections(sortBy: 'followers' | 'downloads' | 'rating' = 'followers', limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  let orderByClause;
+  switch (sortBy) {
+    case 'downloads':
+      orderByClause = desc(templateCollections.downloadCount);
+      break;
+    case 'rating':
+      orderByClause = desc(templateCollections.averageRating);
+      break;
+    case 'followers':
+    default:
+      orderByClause = desc(templateCollections.followerCount);
+  }
+  
+  const collections = await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.isPublic, true))
+    .orderBy(orderByClause)
+    .limit(limit);
+  
+  // Get creator names
+  const userIds = Array.from(new Set(collections.map((c: any) => c.userId)));
+  const usersData = userIds.length > 0 ? await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, userIds as number[])) : [];
+  
+  const userMap = new Map(usersData.map((u: any) => [u.id, u.name]));
+  
+  return collections.map((c: any) => ({
+    ...c,
+    creatorName: userMap.get(c.userId) || undefined,
+  }));
+}
+
+
+// ============================================
+// COLLECTION FOLLOWING
+// ============================================
+
+/** Follow a collection */
+export async function followCollection(userId: number, collectionId: number, notificationsEnabled = true) {
+  const db = await getDb();
+  if (!db) return { success: false, message: 'Database not available' };
+  
+  // Check if already following
+  const existing = await db
+    .select()
+    .from(collectionFollowers)
+    .where(and(
+      eq(collectionFollowers.userId, userId),
+      eq(collectionFollowers.collectionId, collectionId)
+    ))
+    .limit(1);
+  
+  if (existing.length > 0) {
+    return { success: false, message: 'Already following this collection' };
+  }
+  
+  // Add follower
+  await db.insert(collectionFollowers).values({
+    userId,
+    collectionId,
+    notificationsEnabled,
+  });
+  
+  // Increment follower count
+  await db
+    .update(templateCollections)
+    .set({ followerCount: sql`${templateCollections.followerCount} + 1` })
+    .where(eq(templateCollections.id, collectionId));
+  
+  return { success: true };
+}
+
+/** Unfollow a collection */
+export async function unfollowCollection(userId: number, collectionId: number) {
+  const db = await getDb();
+  if (!db) return { success: false };
+  
+  const result = await db
+    .delete(collectionFollowers)
+    .where(and(
+      eq(collectionFollowers.userId, userId),
+      eq(collectionFollowers.collectionId, collectionId)
+    ));
+  
+  if (result[0].affectedRows > 0) {
+    // Decrement follower count
+    await db
+      .update(templateCollections)
+      .set({ followerCount: sql`GREATEST(${templateCollections.followerCount} - 1, 0)` })
+      .where(eq(templateCollections.id, collectionId));
+  }
+  
+  return { success: result[0].affectedRows > 0 };
+}
+
+/** Get collections a user is following */
+export async function getFollowedCollections(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const followed = await db
+    .select({
+      collection: templateCollections,
+      notificationsEnabled: collectionFollowers.notificationsEnabled,
+      followedAt: collectionFollowers.createdAt,
+    })
+    .from(collectionFollowers)
+    .innerJoin(templateCollections, eq(collectionFollowers.collectionId, templateCollections.id))
+    .where(eq(collectionFollowers.userId, userId))
+    .orderBy(desc(collectionFollowers.createdAt));
+  
+  // Get creator names
+  const userIds = Array.from(new Set(followed.map((f: any) => f.collection.userId)));
+  const usersData = userIds.length > 0 ? await db
+    .select({ id: users.id, name: users.name })
+    .from(users)
+    .where(inArray(users.id, userIds as number[])) : [];
+  
+  const userMap = new Map(usersData.map((u: any) => [u.id, u.name]));
+  
+  return followed.map((f: any) => ({
+    ...f.collection,
+    notificationsEnabled: f.notificationsEnabled,
+    followedAt: f.followedAt,
+    creatorName: userMap.get(f.collection.userId) || undefined,
+  }));
+}
+
+/** Check if user is following a collection */
+export async function isFollowingCollection(userId: number, collectionId: number) {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const result = await db
+    .select()
+    .from(collectionFollowers)
+    .where(and(
+      eq(collectionFollowers.userId, userId),
+      eq(collectionFollowers.collectionId, collectionId)
+    ))
+    .limit(1);
+  
+  return result.length > 0;
+}
+
+/** Toggle notifications for a followed collection */
+export async function toggleCollectionNotifications(userId: number, collectionId: number, enabled: boolean) {
+  const db = await getDb();
+  if (!db) return { success: false };
+  
+  await db
+    .update(collectionFollowers)
+    .set({ notificationsEnabled: enabled })
+    .where(and(
+      eq(collectionFollowers.userId, userId),
+      eq(collectionFollowers.collectionId, collectionId)
+    ));
+  
+  return { success: true };
+}
+
+/** Notify followers when a new template is added to a collection */
+export async function notifyCollectionFollowers(collectionId: number, templateName: string) {
+  const db = await getDb();
+  if (!db) return { notified: 0 };
+  
+  // Get collection info
+  const collection = await db
+    .select()
+    .from(templateCollections)
+    .where(eq(templateCollections.id, collectionId))
+    .limit(1);
+  
+  if (!collection[0]) return { notified: 0 };
+  
+  // Get followers with notifications enabled
+  const followers = await db
+    .select({ userId: collectionFollowers.userId })
+    .from(collectionFollowers)
+    .where(and(
+      eq(collectionFollowers.collectionId, collectionId),
+      eq(collectionFollowers.notificationsEnabled, true)
+    ));
+  
+  // In a real implementation, we would send notifications here
+  // For now, just return the count
+  return { 
+    notified: followers.length,
+    collectionName: collection[0].name,
+    templateName,
+  };
+}
+
+
+// ============================================
+// TEMPLATE RECOMMENDATION ENGINE
+// ============================================
+
+/** Generate recommendations for a user based on their usage patterns */
+export async function generateRecommendations(userId: number) {
+  const db = await getDb();
+  if (!db) return { generated: 0 };
+  
+  // Get user's usage history
+  const usageHistory = await db
+    .select({
+      templateId: userTemplateUsage.templateId,
+      usageCount: userTemplateUsage.usageCount,
+    })
+    .from(userTemplateUsage)
+    .where(eq(userTemplateUsage.userId, userId))
+    .orderBy(desc(userTemplateUsage.usageCount))
+    .limit(10);
+  
+  // Get user's rated templates (unused but kept for future enhancements)
+  const _ratedTemplates = await db
+    .select({
+      templateId: templateRatings.templateId,
+      rating: templateRatings.rating,
+    })
+    .from(templateRatings)
+    .where(eq(templateRatings.userId, userId));
+  
+  // Get categories and tags from user's most used templates
+  const usedTemplateIds = usageHistory.map((u: any) => u.templateId);
+  const usedTemplates = usedTemplateIds.length > 0 ? await db
+    .select({
+      id: abTestTemplates.id,
+      category: abTestTemplates.category,
+      tags: abTestTemplates.tags,
+    })
+    .from(abTestTemplates)
+    .where(inArray(abTestTemplates.id, usedTemplateIds as number[])) : [];
+  
+  // Count category preferences
+  const categoryCount = new Map<string, number>();
+  usedTemplates.forEach(t => {
+    const count = categoryCount.get(t.category) || 0;
+    categoryCount.set(t.category, count + 1);
+  });
+  
+  // Get top categories
+  const topCategories = Array.from(categoryCount.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([cat]) => cat);
+  
+  // Get all tags from used templates
+  const allTags = new Set<string>();
+  usedTemplates.forEach(t => {
+    if (t.tags) {
+      t.tags.forEach(tag => allTags.add(tag));
+    }
+  });
+  
+  // Clear old recommendations
+  await db
+    .delete(templateRecommendations)
+    .where(eq(templateRecommendations.userId, userId));
+  
+  const recommendations: { templateId: number; score: number; reason: 'similar_category' | 'similar_tags' | 'popular' | 'highly_rated' | 'used_by_similar_users' }[] = [];
+  
+  // Find templates in similar categories
+  if (topCategories.length > 0) {
+    const categoryTemplates = await db
+      .select({
+        id: abTestTemplates.id,
+        category: abTestTemplates.category,
+        usageCount: abTestTemplates.usageCount,
+        shareCount: abTestTemplates.shareCount,
+      })
+      .from(abTestTemplates)
+      .where(and(
+        inArray(abTestTemplates.category, topCategories),
+        eq(abTestTemplates.isPublic, true),
+        usedTemplateIds.length > 0 ? notInArray(abTestTemplates.id, usedTemplateIds as number[]) : undefined
+      ))
+      .orderBy(desc(abTestTemplates.shareCount))
+      .limit(5);
+    
+    categoryTemplates.forEach((t: any) => {
+      recommendations.push({
+        templateId: t.id,
+        score: 70 + (t.shareCount || 0) * 2,
+        reason: 'similar_category',
+      });
+    });
+  }
+  
+  // Find highly rated templates (using shareCount as proxy for quality)
+  const highlyRated = await db
+    .select({
+      id: abTestTemplates.id,
+      shareCount: abTestTemplates.shareCount,
+      usageCount: abTestTemplates.usageCount,
+    })
+    .from(abTestTemplates)
+    .where(and(
+      eq(abTestTemplates.isPublic, true),
+      gte(abTestTemplates.shareCount, 1),
+      usedTemplateIds.length > 0 ? notInArray(abTestTemplates.id, usedTemplateIds as number[]) : undefined
+    ))
+    .orderBy(desc(abTestTemplates.shareCount), desc(abTestTemplates.usageCount))
+    .limit(5);
+  
+  highlyRated.forEach((t: any) => {
+    if (!recommendations.find(r => r.templateId === t.id)) {
+      recommendations.push({
+        templateId: t.id,
+        score: 60 + (t.shareCount || 0) * 5,
+        reason: 'highly_rated',
+      });
+    }
+  });
+  
+  // Find popular templates
+  const popular = await db
+    .select({
+      id: abTestTemplates.id,
+      usageCount: abTestTemplates.usageCount,
+    })
+    .from(abTestTemplates)
+    .where(and(
+      eq(abTestTemplates.isPublic, true),
+      usedTemplateIds.length > 0 ? notInArray(abTestTemplates.id, usedTemplateIds as number[]) : undefined
+    ))
+    .orderBy(desc(abTestTemplates.usageCount))
+    .limit(5);
+  
+  popular.forEach((t: any) => {
+    if (!recommendations.find(r => r.templateId === t.id)) {
+      recommendations.push({
+        templateId: t.id,
+        score: 50 + Math.min((t.usageCount || 0) / 10, 30),
+        reason: 'popular',
+      });
+    }
+  });
+  
+  // Insert recommendations
+  if (recommendations.length > 0) {
+    await db.insert(templateRecommendations).values(
+      recommendations.map(r => ({
+        userId,
+        templateId: r.templateId,
+        score: Math.round(r.score),
+        reason: r.reason,
+      }))
+    );
+  }
+  
+  return { generated: recommendations.length };
+}
+
+/** Get recommendations for a user */
+export async function getRecommendations(userId: number, limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const recs = await db
+    .select({
+      recommendation: templateRecommendations,
+      template: abTestTemplates,
+    })
+    .from(templateRecommendations)
+    .innerJoin(abTestTemplates, eq(templateRecommendations.templateId, abTestTemplates.id))
+    .where(and(
+      eq(templateRecommendations.userId, userId),
+      eq(templateRecommendations.dismissed, false)
+    ))
+    .orderBy(desc(templateRecommendations.score))
+    .limit(limit);
+  
+  return recs.map((r: any) => ({
+    ...r.template,
+    recommendationId: r.recommendation.id,
+    score: r.recommendation.score,
+    reason: r.recommendation.reason,
+    seen: r.recommendation.seen,
+  }));
+}
+
+/** Mark a recommendation as seen */
+export async function markRecommendationSeen(userId: number, recommendationId: number) {
+  const db = await getDb();
+  if (!db) return { success: false };
+  
+  await db
+    .update(templateRecommendations)
+    .set({ seen: true })
+    .where(and(
+      eq(templateRecommendations.id, recommendationId),
+      eq(templateRecommendations.userId, userId)
+    ));
+  
+  return { success: true };
+}
+
+/** Dismiss a recommendation */
+export async function dismissRecommendation(userId: number, recommendationId: number) {
+  const db = await getDb();
+  if (!db) return { success: false };
+  
+  await db
+    .update(templateRecommendations)
+    .set({ dismissed: true })
+    .where(and(
+      eq(templateRecommendations.id, recommendationId),
+      eq(templateRecommendations.userId, userId)
+    ));
+  
+  return { success: true };
+}
+
+/** Get recommendation reasons display text */
+export function getRecommendationReasonText(reason: string): string {
+  switch (reason) {
+    case 'similar_category':
+      return 'Based on your category preferences';
+    case 'similar_tags':
+      return 'Similar to templates you use';
+    case 'popular':
+      return 'Popular in the community';
+    case 'highly_rated':
+      return 'Highly rated by users';
+    case 'used_by_similar_users':
+      return 'Used by similar creators';
+    default:
+      return 'Recommended for you';
+  }
 }
