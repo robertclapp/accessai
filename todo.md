@@ -603,3 +603,27 @@
 - [x] Add template usage tracking
 - [x] Seed system templates (question vs statement, short vs long, etc.)
 - [x] Write tests for A/B test templates (455 tests passing)
+
+## Template Preview with Sample Content (New)
+- [x] Add sample content input field to template preview
+- [x] Create live preview component showing both variants
+- [x] Apply template placeholders to sample content
+- [x] Show side-by-side comparison of variants
+- [x] Write tests for template preview (481 tests passing)
+
+## Digest A/B Testing (New)
+- [x] Create digest_ab_tests table in schema
+- [x] Add database functions for digest A/B test CRUD
+- [x] Create digest A/B test endpoints in router
+- [x] Build digest A/B test UI in Settings
+- [x] Track open rates for each digest variant
+- [x] Determine winning format based on engagement
+- [x] Write tests for digest A/B testing (481 tests passing)
+
+## Template Sharing (New)
+- [x] Add isPublic and shareCount fields to templates
+- [x] Create shared templates endpoints (list, share, unshare)
+- [x] Build community templates browser UI
+- [x] Add copy-to-my-templates functionality
+- [x] Show attribution for shared templates
+- [x] Write tests for template sharing (481 tests passing)

@@ -12,7 +12,7 @@ import { notifyOwner } from "./_core/notification";
 // import { storagePut } from "./storage";
 import { nanoid } from "nanoid";
 import * as db from "./db";
-import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates } from "./db";
+import { getABTestTemplates, getABTestTemplate, createABTestTemplate, updateABTestTemplate, deleteABTestTemplate, incrementABTestTemplateUsage, seedSystemABTestTemplates, createDigestABTest, getDigestABTests, getDigestABTest, getRunningDigestABTest, startDigestABTest, completeDigestABTest, deleteDigestABTest, getSharedABTestTemplates, shareABTestTemplate, unshareABTestTemplate, copySharedABTestTemplate, getTemplateSharingStats } from "./db";
 import type { InsertPost } from "../drizzle/schema";
 import {
   generateVerificationToken,
@@ -1527,6 +1527,80 @@ ${aiContext}`
       .query(async ({ ctx }) => {
         return await db.getDigestPauseStatus(ctx.user.id);
       }),
+    
+    // Digest A/B Testing
+    /** Get all digest A/B tests */
+    getDigestABTests: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getDigestABTests(ctx.user.id);
+      }),
+    
+    /** Get a single digest A/B test */
+    getDigestABTest: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .query(async ({ ctx, input }) => {
+        return await getDigestABTest(input.id, ctx.user.id);
+      }),
+    
+    /** Get currently running digest A/B test */
+    getRunningDigestABTest: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getRunningDigestABTest(ctx.user.id);
+      }),
+    
+    /** Create a new digest A/B test */
+    createDigestABTest: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(200),
+        variantAName: z.string().max(100).optional(),
+        variantASubjectLine: z.string().max(200).optional(),
+        variantASectionOrder: z.array(z.string()).optional(),
+        variantAIncludeSections: z.record(z.string(), z.boolean()).optional(),
+        variantBName: z.string().max(100).optional(),
+        variantBSubjectLine: z.string().max(200).optional(),
+        variantBSectionOrder: z.array(z.string()).optional(),
+        variantBIncludeSections: z.record(z.string(), z.boolean()).optional(),
+        testDuration: z.number().min(2).max(20).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        return await createDigestABTest(ctx.user.id, input);
+      }),
+    
+    /** Start a digest A/B test */
+    startDigestABTest: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await startDigestABTest(input.id, ctx.user.id);
+        if (!success) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Cannot start test. There may already be a running test.",
+          });
+        }
+        return { success: true };
+      }),
+    
+    /** Complete a digest A/B test */
+    completeDigestABTest: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await completeDigestABTest(input.id, ctx.user.id);
+        if (!result) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Test not found",
+          });
+        }
+        return result;
+      }),
+    
+    /** Delete a digest A/B test */
+    deleteDigestABTest: protectedProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await deleteDigestABTest(input.id, ctx.user.id);
+        return { success: true };
+      }),
   }),
 
   // ============================================
@@ -2630,6 +2704,58 @@ ${aiContext}`
         }
         await incrementABTestTemplateUsage(input.templateId);
         return { template };
+      }),
+    
+    /** Get all publicly shared templates from the community */
+    getSharedTemplates: protectedProcedure
+      .input(z.object({
+        category: z.string().optional(),
+        search: z.string().optional(),
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        return await getSharedABTestTemplates(input);
+      }),
+    
+    /** Share a template publicly */
+    shareTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const success = await shareABTestTemplate(
+          input.templateId,
+          ctx.user.id,
+          ctx.user.name || "Anonymous"
+        );
+        if (!success) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Template not found or not owned by you" });
+        }
+        return { success: true };
+      }),
+    
+    /** Unshare a template (make it private) */
+    unshareTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        await unshareABTestTemplate(input.templateId, ctx.user.id);
+        return { success: true };
+      }),
+    
+    /** Copy a shared template to your own templates */
+    copySharedTemplate: protectedProcedure
+      .input(z.object({ templateId: z.number() }))
+      .mutation(async ({ ctx, input }) => {
+        const newId = await copySharedABTestTemplate(input.templateId, ctx.user.id);
+        if (!newId) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Template not found or not public" });
+        }
+        return { templateId: newId };
+      }),
+    
+    /** Get sharing stats for the current user */
+    getSharingStats: protectedProcedure
+      .query(async ({ ctx }) => {
+        return await getTemplateSharingStats(ctx.user.id);
       }),
   }),
 

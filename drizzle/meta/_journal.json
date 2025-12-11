@@ -169,6 +169,20 @@
       "when": 1765410181190,
       "tag": "0023_lyrical_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "5",
+      "when": 1765426749633,
+      "tag": "0024_omniscient_beyonder",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "5",
+      "when": 1765427192617,
+      "tag": "0025_happy_machine_man",
+      "breakpoints": true
     }
   ]
 }

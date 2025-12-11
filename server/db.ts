@@ -29,7 +29,8 @@ import {
   mastodonTemplates, InsertMastodonTemplate, MastodonTemplate,
   digestDeliveryTracking, InsertDigestDeliveryTracking, DigestDeliveryTracking,
   templateCategories,
-  abTestTemplates, InsertTemplateCategory, TemplateCategory
+  abTestTemplates, InsertABTestTemplate, ABTestTemplate, InsertTemplateCategory, TemplateCategory,
+  digestABTests, InsertDigestABTest, DigestABTest
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -3345,4 +3346,445 @@ export async function seedSystemABTestTemplates() {
       await db.insert(abTestTemplates).values(template);
     }
   }
+}
+
+
+// ============================================
+// DIGEST A/B TEST FUNCTIONS
+// ============================================
+
+/**
+ * Create a new digest A/B test
+ */
+export async function createDigestABTest(
+  userId: number,
+  data: {
+    name: string;
+    variantAName?: string;
+    variantASubjectLine?: string;
+    variantASectionOrder?: string[];
+    variantAIncludeSections?: Record<string, boolean>;
+    variantBName?: string;
+    variantBSubjectLine?: string;
+    variantBSectionOrder?: string[];
+    variantBIncludeSections?: Record<string, boolean>;
+    testDuration?: number;
+  }
+): Promise<DigestABTest | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [result] = await db.insert(digestABTests).values({
+    userId,
+    name: data.name,
+    variantAName: data.variantAName || "Variant A",
+    variantASubjectLine: data.variantASubjectLine,
+    variantASectionOrder: data.variantASectionOrder,
+    variantAIncludeSections: data.variantAIncludeSections,
+    variantBName: data.variantBName || "Variant B",
+    variantBSubjectLine: data.variantBSubjectLine,
+    variantBSectionOrder: data.variantBSectionOrder,
+    variantBIncludeSections: data.variantBIncludeSections,
+    testDuration: data.testDuration || 4,
+    status: "draft",
+  });
+  
+  const [test] = await db
+    .select()
+    .from(digestABTests)
+    .where(eq(digestABTests.id, (result as any).insertId))
+    .limit(1);
+  
+  return test || null;
+}
+
+/**
+ * Get all digest A/B tests for a user
+ */
+export async function getDigestABTests(userId: number): Promise<DigestABTest[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  return db
+    .select()
+    .from(digestABTests)
+    .where(eq(digestABTests.userId, userId))
+    .orderBy(desc(digestABTests.createdAt));
+}
+
+/**
+ * Get a single digest A/B test by ID
+ */
+export async function getDigestABTest(id: number, userId: number): Promise<DigestABTest | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [test] = await db
+    .select()
+    .from(digestABTests)
+    .where(and(eq(digestABTests.id, id), eq(digestABTests.userId, userId)))
+    .limit(1);
+  
+  return test || null;
+}
+
+/**
+ * Get the currently running digest A/B test for a user
+ */
+export async function getRunningDigestABTest(userId: number): Promise<DigestABTest | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const [test] = await db
+    .select()
+    .from(digestABTests)
+    .where(and(eq(digestABTests.userId, userId), eq(digestABTests.status, "running")))
+    .limit(1);
+  
+  return test || null;
+}
+
+/**
+ * Start a digest A/B test
+ */
+export async function startDigestABTest(id: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  // First check if there's already a running test
+  const running = await getRunningDigestABTest(userId);
+  if (running) return false;
+  
+  await db
+    .update(digestABTests)
+    .set({ status: "running", startedAt: new Date() })
+    .where(and(eq(digestABTests.id, id), eq(digestABTests.userId, userId)));
+  
+  return true;
+}
+
+/**
+ * Record a digest send for an A/B test
+ */
+export async function recordDigestABTestSend(
+  id: number,
+  variant: "A" | "B"
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  if (variant === "A") {
+    await db
+      .update(digestABTests)
+      .set({ variantASent: sql`${digestABTests.variantASent} + 1` })
+      .where(eq(digestABTests.id, id));
+  } else {
+    await db
+      .update(digestABTests)
+      .set({ variantBSent: sql`${digestABTests.variantBSent} + 1` })
+      .where(eq(digestABTests.id, id));
+  }
+}
+
+/**
+ * Record a digest open for an A/B test
+ */
+export async function recordDigestABTestOpen(
+  id: number,
+  variant: "A" | "B"
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  if (variant === "A") {
+    await db
+      .update(digestABTests)
+      .set({ variantAOpened: sql`${digestABTests.variantAOpened} + 1` })
+      .where(eq(digestABTests.id, id));
+  } else {
+    await db
+      .update(digestABTests)
+      .set({ variantBOpened: sql`${digestABTests.variantBOpened} + 1` })
+      .where(eq(digestABTests.id, id));
+  }
+}
+
+/**
+ * Record a digest click for an A/B test
+ */
+export async function recordDigestABTestClick(
+  id: number,
+  variant: "A" | "B"
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  if (variant === "A") {
+    await db
+      .update(digestABTests)
+      .set({ variantAClicked: sql`${digestABTests.variantAClicked} + 1` })
+      .where(eq(digestABTests.id, id));
+  } else {
+    await db
+      .update(digestABTests)
+      .set({ variantBClicked: sql`${digestABTests.variantBClicked} + 1` })
+      .where(eq(digestABTests.id, id));
+  }
+}
+
+/**
+ * Complete a digest A/B test and determine winner
+ */
+export async function completeDigestABTest(
+  id: number,
+  userId: number
+): Promise<{ winner: "A" | "B" | "tie"; reason: string } | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const test = await getDigestABTest(id, userId);
+  if (!test) return null;
+  
+  // Calculate open rates
+  const openRateA = test.variantASent ? ((test.variantAOpened || 0) / test.variantASent) * 100 : 0;
+  const openRateB = test.variantBSent ? ((test.variantBOpened || 0) / test.variantBSent) * 100 : 0;
+  
+  // Calculate click rates
+  const clickRateA = test.variantASent ? ((test.variantAClicked || 0) / test.variantASent) * 100 : 0;
+  const clickRateB = test.variantBSent ? ((test.variantBClicked || 0) / test.variantBSent) * 100 : 0;
+  
+  // Determine winner based on combined score (open rate + click rate)
+  const scoreA = openRateA + clickRateA * 2; // Weight clicks more
+  const scoreB = openRateB + clickRateB * 2;
+  
+  let winner: "A" | "B" | "tie" = "tie";
+  let reason = "";
+  
+  if (Math.abs(scoreA - scoreB) < 1) {
+    winner = "tie";
+    reason = `Results too close to determine a clear winner. Variant A: ${openRateA.toFixed(1)}% open, ${clickRateA.toFixed(1)}% click. Variant B: ${openRateB.toFixed(1)}% open, ${clickRateB.toFixed(1)}% click.`;
+  } else if (scoreA > scoreB) {
+    winner = "A";
+    reason = `Variant A performed better with ${openRateA.toFixed(1)}% open rate and ${clickRateA.toFixed(1)}% click rate vs Variant B's ${openRateB.toFixed(1)}% open and ${clickRateB.toFixed(1)}% click.`;
+  } else {
+    winner = "B";
+    reason = `Variant B performed better with ${openRateB.toFixed(1)}% open rate and ${clickRateB.toFixed(1)}% click rate vs Variant A's ${openRateA.toFixed(1)}% open and ${clickRateA.toFixed(1)}% click.`;
+  }
+  
+  await db
+    .update(digestABTests)
+    .set({
+      status: "completed",
+      completedAt: new Date(),
+      winningVariant: winner === "tie" ? null : winner,
+      winningReason: reason,
+    })
+    .where(and(eq(digestABTests.id, id), eq(digestABTests.userId, userId)));
+  
+  return { winner, reason };
+}
+
+/**
+ * Delete a digest A/B test
+ */
+export async function deleteDigestABTest(id: number, userId: number): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db
+    .delete(digestABTests)
+    .where(and(eq(digestABTests.id, id), eq(digestABTests.userId, userId)));
+  
+  return true;
+}
+
+
+// ==========================================
+// Template Sharing Functions
+// ==========================================
+
+/**
+ * Get all publicly shared A/B test templates
+ */
+export async function getSharedABTestTemplates(options?: {
+  category?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<ABTestTemplate[]> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions = [
+    eq(abTestTemplates.isPublic, true),
+    eq(abTestTemplates.isSystem, false),
+  ];
+  
+  if (options?.category) {
+    conditions.push(eq(abTestTemplates.category, options.category));
+  }
+  
+  let query = db
+    .select()
+    .from(abTestTemplates)
+    .where(and(...conditions))
+    .orderBy(desc(abTestTemplates.shareCount), desc(abTestTemplates.createdAt));
+  
+  if (options?.limit) {
+    query = query.limit(options.limit) as typeof query;
+  }
+  if (options?.offset) {
+    query = query.offset(options.offset) as typeof query;
+  }
+  
+  const results = await query;
+  
+  // Filter by search if provided
+  if (options?.search) {
+    const searchLower = options.search.toLowerCase();
+    return results.filter(t => 
+      t.name.toLowerCase().includes(searchLower) ||
+      t.description?.toLowerCase().includes(searchLower) ||
+      t.tags?.some((tag: string) => tag.toLowerCase().includes(searchLower))
+    );
+  }
+  
+  return results;
+}
+
+/**
+ * Share a template publicly
+ */
+export async function shareABTestTemplate(
+  templateId: number,
+  userId: number,
+  creatorName: string
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  // Verify ownership
+  const [template] = await db
+    .select()
+    .from(abTestTemplates)
+    .where(and(
+      eq(abTestTemplates.id, templateId),
+      eq(abTestTemplates.userId, userId),
+      eq(abTestTemplates.isSystem, false)
+    ))
+    .limit(1);
+  
+  if (!template) return false;
+  
+  await db
+    .update(abTestTemplates)
+    .set({ isPublic: true, creatorName })
+    .where(eq(abTestTemplates.id, templateId));
+  
+  return true;
+}
+
+/**
+ * Unshare a template (make it private)
+ */
+export async function unshareABTestTemplate(
+  templateId: number,
+  userId: number
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db
+    .update(abTestTemplates)
+    .set({ isPublic: false })
+    .where(and(
+      eq(abTestTemplates.id, templateId),
+      eq(abTestTemplates.userId, userId)
+    ));
+  
+  return true;
+}
+
+/**
+ * Copy a shared template to user's templates
+ */
+export async function copySharedABTestTemplate(
+  templateId: number,
+  userId: number
+): Promise<number | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  // Get the original template
+  const [original] = await db
+    .select()
+    .from(abTestTemplates)
+    .where(and(
+      eq(abTestTemplates.id, templateId),
+      eq(abTestTemplates.isPublic, true)
+    ))
+    .limit(1);
+  
+  if (!original) return null;
+  
+  // Create a copy for the user
+  const result = await db.insert(abTestTemplates).values({
+    name: `${original.name} (Copy)`,
+    description: original.description,
+    category: original.category,
+    isSystem: false,
+    userId,
+    platforms: original.platforms,
+    variantATemplate: original.variantATemplate,
+    variantALabel: original.variantALabel,
+    variantBTemplate: original.variantBTemplate,
+    variantBLabel: original.variantBLabel,
+    exampleUseCase: original.exampleUseCase,
+    tags: original.tags,
+    usageCount: 0,
+    isPublic: false,
+    shareCount: 0,
+    copiedFromId: original.id,
+    creatorName: original.creatorName,
+  });
+  
+  // Increment share count on original
+  await db
+    .update(abTestTemplates)
+    .set({ shareCount: sql`${abTestTemplates.shareCount} + 1` })
+    .where(eq(abTestTemplates.id, templateId));
+  
+  const insertId = (result as any)[0]?.insertId;
+  return insertId || null;
+}
+
+/**
+ * Get template sharing stats for a user
+ */
+export async function getTemplateSharingStats(userId: number): Promise<{
+  totalShared: number;
+  totalCopies: number;
+  topTemplates: { id: number; name: string; shareCount: number }[];
+}> {
+  const db = await getDb();
+  if (!db) return { totalShared: 0, totalCopies: 0, topTemplates: [] };
+  
+  const sharedTemplates = await db
+    .select()
+    .from(abTestTemplates)
+    .where(and(
+      eq(abTestTemplates.userId, userId),
+      eq(abTestTemplates.isPublic, true)
+    ))
+    .orderBy(desc(abTestTemplates.shareCount));
+  
+  const totalShared = sharedTemplates.length;
+  const totalCopies = sharedTemplates.reduce((sum, t) => sum + (t.shareCount || 0), 0);
+  const topTemplates = sharedTemplates.slice(0, 5).map(t => ({
+    id: t.id,
+    name: t.name,
+    shareCount: t.shareCount || 0,
+  }));
+  
+  return { totalShared, totalCopies, topTemplates };
 }

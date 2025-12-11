@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -44,7 +45,11 @@ import {
   Pause,
   Play,
   Calendar,
-  GripVertical
+  GripVertical,
+  FlaskConical,
+  Plus,
+  BarChart3,
+  Trophy
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
@@ -408,6 +413,237 @@ function DigestPauseControl() {
       {!isPaused && !showPauseForm && (
         <p className="text-sm text-muted-foreground">
           Temporarily pause digest emails without losing your preferences. Perfect for vacations or breaks.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Digest A/B Testing Section Component */
+function DigestABTestingSection() {
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newTestName, setNewTestName] = useState("");
+  const [variantASubject, setVariantASubject] = useState("");
+  const [variantBSubject, setVariantBSubject] = useState("");
+  const [testDuration, setTestDuration] = useState(4);
+  
+  const utils = trpc.useUtils();
+  
+  const { data: tests, isLoading } = trpc.settings.getDigestABTests.useQuery();
+  const { data: runningTest } = trpc.settings.getRunningDigestABTest.useQuery();
+  
+  const createTest = trpc.settings.createDigestABTest.useMutation({
+    onSuccess: () => {
+      toast.success("A/B test created!");
+      setShowCreateDialog(false);
+      setNewTestName("");
+      setVariantASubject("");
+      setVariantBSubject("");
+      utils.settings.getDigestABTests.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const startTest = trpc.settings.startDigestABTest.useMutation({
+    onSuccess: () => {
+      toast.success("A/B test started!");
+      utils.settings.getDigestABTests.invalidate();
+      utils.settings.getRunningDigestABTest.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const completeTest = trpc.settings.completeDigestABTest.useMutation({
+    onSuccess: (result) => {
+      toast.success(`Test completed! Winner: ${result.winner === "tie" ? "Tie" : `Variant ${result.winner}`}`);
+      utils.settings.getDigestABTests.invalidate();
+      utils.settings.getRunningDigestABTest.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const deleteTest = trpc.settings.deleteDigestABTest.useMutation({
+    onSuccess: () => {
+      toast.success("Test deleted");
+      utils.settings.getDigestABTests.invalidate();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const handleCreate = () => {
+    if (!newTestName.trim()) {
+      toast.error("Please enter a test name");
+      return;
+    }
+    createTest.mutate({
+      name: newTestName,
+      variantAName: "Original Subject",
+      variantASubjectLine: variantASubject || undefined,
+      variantBName: "New Subject",
+      variantBSubjectLine: variantBSubject || undefined,
+      testDuration,
+    });
+  };
+  
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FlaskConical className="h-5 w-5 text-purple-600" />
+          <h3 className="font-medium">Digest A/B Testing</h3>
+        </div>
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogTrigger asChild>
+            <Button size="sm" disabled={!!runningTest}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Test
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Digest A/B Test</DialogTitle>
+              <DialogDescription>
+                Test different subject lines to optimize your digest open rates.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="test-name">Test Name</Label>
+                <Input
+                  id="test-name"
+                  placeholder="e.g., Subject Line Test - January"
+                  value={newTestName}
+                  onChange={(e) => setNewTestName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="variant-a">Variant A Subject Line</Label>
+                <Input
+                  id="variant-a"
+                  placeholder="Your Weekly AccessAI Digest"
+                  value={variantASubject}
+                  onChange={(e) => setVariantASubject(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">Leave empty to use default</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="variant-b">Variant B Subject Line</Label>
+                <Input
+                  id="variant-b"
+                  placeholder="📊 Your Content Performance This Week"
+                  value={variantBSubject}
+                  onChange={(e) => setVariantBSubject(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="duration">Test Duration (weeks)</Label>
+                <Select value={String(testDuration)} onValueChange={(v) => setTestDuration(Number(v))}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2 weeks</SelectItem>
+                    <SelectItem value="4">4 weeks</SelectItem>
+                    <SelectItem value="6">6 weeks</SelectItem>
+                    <SelectItem value="8">8 weeks</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+              <Button onClick={handleCreate} disabled={createTest.isPending}>
+                {createTest.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Create Test
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+      
+      {runningTest && (
+        <Alert className="border-purple-500 bg-purple-50 dark:bg-purple-950/20">
+          <FlaskConical className="h-4 w-4 text-purple-600" />
+          <AlertTitle className="text-purple-800 dark:text-purple-400">Test Running: {runningTest.name}</AlertTitle>
+          <AlertDescription className="text-purple-700 dark:text-purple-500">
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              <div className="text-center p-2 bg-white/50 dark:bg-black/20 rounded">
+                <p className="font-medium">{runningTest.variantAName}</p>
+                <p className="text-xs">Sent: {runningTest.variantASent || 0} | Opened: {runningTest.variantAOpened || 0}</p>
+                <p className="text-xs">Open Rate: {runningTest.variantASent ? ((runningTest.variantAOpened || 0) / runningTest.variantASent * 100).toFixed(1) : 0}%</p>
+              </div>
+              <div className="text-center p-2 bg-white/50 dark:bg-black/20 rounded">
+                <p className="font-medium">{runningTest.variantBName}</p>
+                <p className="text-xs">Sent: {runningTest.variantBSent || 0} | Opened: {runningTest.variantBOpened || 0}</p>
+                <p className="text-xs">Open Rate: {runningTest.variantBSent ? ((runningTest.variantBOpened || 0) / runningTest.variantBSent * 100).toFixed(1) : 0}%</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-3"
+              onClick={() => completeTest.mutate({ id: runningTest.id })}
+              disabled={completeTest.isPending}
+            >
+              {completeTest.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              End Test & Determine Winner
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {isLoading ? (
+        <div className="flex justify-center py-4">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : tests && tests.length > 0 ? (
+        <div className="space-y-2">
+          {tests.filter((t: any) => t.status !== "running").slice(0, 5).map((test: any) => (
+            <div key={test.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{test.name}</span>
+                  <Badge variant={test.status === "completed" ? "default" : "secondary"}>
+                    {test.status}
+                  </Badge>
+                  {test.winningVariant && (
+                    <Badge variant="outline" className="text-green-600 border-green-600">
+                      <Trophy className="h-3 w-3 mr-1" />
+                      {test.winningVariant === "A" ? test.variantAName : test.variantBName} won
+                    </Badge>
+                  )}
+                </div>
+                {test.status === "completed" && test.winningReason && (
+                  <p className="text-xs text-muted-foreground mt-1">{test.winningReason}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {test.status === "draft" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => startTest.mutate({ id: test.id })}
+                    disabled={!!runningTest || startTest.isPending}
+                  >
+                    <Play className="h-4 w-4 mr-1" />
+                    Start
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => deleteTest.mutate({ id: test.id })}
+                  disabled={deleteTest.isPending}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground text-center py-4">
+          No A/B tests yet. Create one to optimize your digest open rates!
         </p>
       )}
     </div>
@@ -884,6 +1120,11 @@ function EmailDigestsTab() {
             
             {/* Delivery Tracking Stats */}
             <DigestDeliveryStats />
+            
+            <Separator />
+            
+            {/* A/B Testing */}
+            <DigestABTestingSection />
           </>
         )}
         

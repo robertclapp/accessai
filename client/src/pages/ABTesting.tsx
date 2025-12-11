@@ -48,6 +48,10 @@ import {
   Minus,
   FileStack,
   Copy,
+  Share2,
+  Users,
+  Globe,
+  Lock,
   Tag
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
@@ -1945,6 +1949,8 @@ function ABTestTemplatesDialog({
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [previewTemplate, setPreviewTemplate] = useState<any>(null);
+  const [sampleContent, setSampleContent] = useState("Check out our new AI-powered content creation tool that helps you write better posts faster!");
   const [newTemplate, setNewTemplate] = useState({
     name: "",
     description: "",
@@ -1957,6 +1963,7 @@ function ABTestTemplatesDialog({
     tags: [] as string[],
   });
   const [tagInput, setTagInput] = useState("");
+  const [activeTab, setActiveTab] = useState<"my" | "community">("my");
   
   const { data: templates, isLoading, refetch } = trpc.abTesting.getTemplates.useQuery(
     undefined,
@@ -2011,6 +2018,42 @@ function ABTestTemplatesDialog({
     onError: (error) => {
       toast.error(`Failed to use template: ${error.message}`);
     },
+  });
+  
+  // Community templates
+  const { data: communityTemplates, isLoading: isCommunityLoading, refetch: refetchCommunity } = trpc.abTesting.getSharedTemplates.useQuery(
+    { category: selectedCategory === "all" ? undefined : selectedCategory, search: searchQuery || undefined },
+    { enabled: open && activeTab === "community" }
+  );
+  
+  const { data: sharingStats } = trpc.abTesting.getSharingStats.useQuery(
+    undefined,
+    { enabled: open }
+  );
+  
+  const shareMutation = trpc.abTesting.shareTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template shared with the community!");
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const unshareMutation = trpc.abTesting.unshareTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template is now private");
+      refetch();
+    },
+    onError: (error) => toast.error(error.message),
+  });
+  
+  const copyMutation = trpc.abTesting.copySharedTemplate.useMutation({
+    onSuccess: () => {
+      toast.success("Template copied to your library!");
+      refetch();
+      setActiveTab("my");
+    },
+    onError: (error) => toast.error(error.message),
   });
   
   const categories = [
@@ -2074,6 +2117,35 @@ function ABTestTemplatesDialog({
           </DialogDescription>
         </DialogHeader>
         
+        {/* Tabs */}
+        <div className="flex gap-2 border-b pb-2">
+          <Button
+            variant={activeTab === "my" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("my")}
+          >
+            <FileStack className="w-4 h-4 mr-2" />
+            My Templates
+          </Button>
+          <Button
+            variant={activeTab === "community" ? "default" : "ghost"}
+            size="sm"
+            onClick={() => setActiveTab("community")}
+          >
+            <Globe className="w-4 h-4 mr-2" />
+            Community
+            {communityTemplates && communityTemplates.length > 0 && (
+              <Badge variant="secondary" className="ml-2">{communityTemplates.length}</Badge>
+            )}
+          </Button>
+          {sharingStats && sharingStats.totalShared > 0 && (
+            <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+              <Share2 className="w-4 h-4" />
+              {sharingStats.totalShared} shared · {sharingStats.totalCopies} copies
+            </div>
+          )}
+        </div>
+        
         {/* Filters */}
         <div className="flex gap-4 items-center">
           <div className="flex-1">
@@ -2101,58 +2173,91 @@ function ABTestTemplatesDialog({
           </Button>
         </div>
         
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : filteredTemplates.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <FileStack className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No templates found matching your criteria.</p>
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {filteredTemplates.map((template) => (
-              <Card key={template.id} className="relative">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="space-y-1">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        {template.name}
-                        {template.isSystem && (
-                          <Badge variant="secondary" className="text-xs">System</Badge>
-                        )}
-                      </CardTitle>
-                      <Badge className={getCategoryColor(template.category)}>
-                        {template.category}
-                      </Badge>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => useMutation.mutate({ templateId: template.id })}
-                        disabled={useMutation.isPending}
-                      >
-                        <Copy className="w-4 h-4" />
-                      </Button>
-                      {!template.isSystem && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => {
-                            if (confirm("Delete this template?")) {
-                              deleteMutation.mutate({ templateId: template.id });
-                            }
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </CardHeader>
+        {/* My Templates Tab */}
+        {activeTab === "my" && (
+          <>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <FileStack className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No templates found matching your criteria.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {filteredTemplates.map((template) => (
+                  <Card key={template.id} className="relative">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <CardTitle className="text-base flex items-center gap-2">
+                            {template.name}
+                            {template.isSystem && (
+                              <Badge variant="secondary" className="text-xs">System</Badge>
+                            )}
+                            {template.isPublic && (
+                              <Badge variant="outline" className="text-xs">
+                                <Globe className="w-3 h-3 mr-1" />
+                                Shared
+                              </Badge>
+                            )}
+                          </CardTitle>
+                          <Badge className={getCategoryColor(template.category)}>
+                            {template.category}
+                          </Badge>
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => useMutation.mutate({ templateId: template.id })}
+                            disabled={useMutation.isPending}
+                            title="Use this template"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                          {!template.isSystem && (
+                            <>
+                              {template.isPublic ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => unshareMutation.mutate({ templateId: template.id })}
+                                  disabled={unshareMutation.isPending}
+                                  title="Make private"
+                                >
+                                  <Lock className="w-4 h-4" />
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => shareMutation.mutate({ templateId: template.id })}
+                                  disabled={shareMutation.isPending}
+                                  title="Share with community"
+                                >
+                                  <Share2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => {
+                                  if (confirm("Delete this template?")) {
+                                    deleteMutation.mutate({ templateId: template.id });
+                                  }
+                                }}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </CardHeader>
                 <CardContent className="space-y-3">
                   {template.description && (
                     <p className="text-sm text-muted-foreground">{template.description}</p>
@@ -2188,6 +2293,14 @@ function ABTestTemplatesDialog({
                     <span>Used {template.usageCount || 0} times</span>
                     <Button
                       size="sm"
+                      variant="outline"
+                      onClick={() => setPreviewTemplate(template)}
+                    >
+                      <Eye className="w-4 h-4 mr-1" />
+                      Preview
+                    </Button>
+                    <Button
+                      size="sm"
                       onClick={() => useMutation.mutate({ templateId: template.id })}
                       disabled={useMutation.isPending}
                     >
@@ -2198,6 +2311,93 @@ function ABTestTemplatesDialog({
               </Card>
             ))}
           </div>
+        )}
+          </>
+        )}
+        
+        {/* Community Templates Tab */}
+        {activeTab === "community" && (
+          <>
+            {isCommunityLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              </div>
+            ) : !communityTemplates || communityTemplates.length === 0 ? (
+              <div className="text-center py-12 text-muted-foreground">
+                <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                <p>No community templates yet.</p>
+                <p className="text-sm mt-2">Be the first to share a template!</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {communityTemplates.map((template) => (
+                  <Card key={template.id} className="relative">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <CardTitle className="text-base">{template.name}</CardTitle>
+                          <div className="flex items-center gap-2">
+                            <Badge className={getCategoryColor(template.category)}>
+                              {template.category}
+                            </Badge>
+                            {template.creatorName && (
+                              <span className="text-xs text-muted-foreground">
+                                by {template.creatorName}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => copyMutation.mutate({ templateId: template.id })}
+                          disabled={copyMutation.isPending}
+                        >
+                          <Copy className="w-4 h-4 mr-2" />
+                          Copy
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {template.description && (
+                        <p className="text-sm text-muted-foreground">{template.description}</p>
+                      )}
+                      
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="p-2 bg-muted rounded">
+                          <div className="font-medium text-xs text-muted-foreground mb-1">
+                            {template.variantALabel || "Variant A"}
+                          </div>
+                          <div className="text-xs line-clamp-2">{template.variantATemplate}</div>
+                        </div>
+                        <div className="p-2 bg-muted rounded">
+                          <div className="font-medium text-xs text-muted-foreground mb-1">
+                            {template.variantBLabel || "Variant B"}
+                          </div>
+                          <div className="text-xs line-clamp-2">{template.variantBTemplate}</div>
+                        </div>
+                      </div>
+                      
+                      {template.tags && template.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {template.tags.map((tag: string, idx: number) => (
+                            <Badge key={idx} variant="outline" className="text-xs">
+                              <Tag className="w-3 h-3 mr-1" />
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      
+                      <div className="flex items-center text-xs text-muted-foreground">
+                        <Users className="w-3 h-3 mr-1" />
+                        Copied {template.shareCount || 0} times
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
         )}
         
         <DialogFooter>
@@ -2330,6 +2530,104 @@ function ABTestTemplatesDialog({
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               ) : null}
               Create Template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Template Preview Dialog */}
+      <Dialog open={!!previewTemplate} onOpenChange={(open) => !open && setPreviewTemplate(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Template Preview: {previewTemplate?.name}
+            </DialogTitle>
+            <DialogDescription>
+              See how this template transforms your content
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Sample Content</Label>
+              <Textarea
+                value={sampleContent}
+                onChange={(e) => setSampleContent(e.target.value)}
+                placeholder="Enter sample content to preview..."
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground">
+                Use placeholders like [topic], [benefit], [number] in templates. They will be highlighted in the preview.
+              </p>
+            </div>
+            
+            <Separator />
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-blue-500/10 text-blue-500">
+                    {previewTemplate?.variantALabel || "Variant A"}
+                  </Badge>
+                </div>
+                <Card className="p-4 bg-muted/50">
+                  <div className="text-sm whitespace-pre-wrap">
+                    {previewTemplate?.variantATemplate?.replace(/\[([^\]]+)\]/g, (_: string, placeholder: string) => {
+                      // Try to extract relevant content from sample
+                      if (placeholder.toLowerCase() === 'topic') return 'AI-powered content creation';
+                      if (placeholder.toLowerCase() === 'benefit') return 'write better posts faster';
+                      if (placeholder.toLowerCase() === 'number') return '5';
+                      if (placeholder.toLowerCase() === 'question') return 'struggling to create engaging content';
+                      return `[${placeholder}]`;
+                    })}
+                  </div>
+                </Card>
+                <div className="text-xs text-muted-foreground">
+                  Template: <code className="bg-muted px-1 rounded">{previewTemplate?.variantATemplate}</code>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-green-500/10 text-green-500">
+                    {previewTemplate?.variantBLabel || "Variant B"}
+                  </Badge>
+                </div>
+                <Card className="p-4 bg-muted/50">
+                  <div className="text-sm whitespace-pre-wrap">
+                    {previewTemplate?.variantBTemplate?.replace(/\[([^\]]+)\]/g, (_: string, placeholder: string) => {
+                      if (placeholder.toLowerCase() === 'topic') return 'AI-powered content creation';
+                      if (placeholder.toLowerCase() === 'benefit') return 'write better posts faster';
+                      if (placeholder.toLowerCase() === 'number') return '5';
+                      if (placeholder.toLowerCase() === 'statement') return 'This tool will transform your content strategy';
+                      return `[${placeholder}]`;
+                    })}
+                  </div>
+                </Card>
+                <div className="text-xs text-muted-foreground">
+                  Template: <code className="bg-muted px-1 rounded">{previewTemplate?.variantBTemplate}</code>
+                </div>
+              </div>
+            </div>
+            
+            {previewTemplate?.description && (
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="text-sm font-medium mb-1">About this template</div>
+                <div className="text-sm text-muted-foreground">{previewTemplate.description}</div>
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPreviewTemplate(null)}>
+              Close
+            </Button>
+            <Button onClick={() => {
+              useMutation.mutate({ templateId: previewTemplate?.id });
+              setPreviewTemplate(null);
+            }}>
+              Use This Template
             </Button>
           </DialogFooter>
         </DialogContent>

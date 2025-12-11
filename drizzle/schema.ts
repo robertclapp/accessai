@@ -977,9 +977,75 @@ export const abTestTemplates = mysqlTable("ab_test_templates", {
   /** Usage count (how many tests created from this template) */
   usageCount: int("usageCount").default(0),
   
+  /** Whether this template is shared publicly */
+  isPublic: boolean("isPublic").default(false),
+  
+  /** Number of times this template has been copied by other users */
+  shareCount: int("shareCount").default(0),
+  
+  /** Original template ID if this was copied from a shared template */
+  copiedFromId: int("copiedFromId"),
+  
+  /** Username of the original creator (for attribution) */
+  creatorName: varchar("creatorName", { length: 255 }),
+  
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
 export type ABTestTemplate = typeof abTestTemplates.$inferSelect;
 export type InsertABTestTemplate = typeof abTestTemplates.$inferInsert;
+
+
+/**
+ * Digest A/B Tests - Test different email digest formats to optimize engagement
+ */
+export const digestABTests = mysqlTable("digest_ab_tests", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  
+  /** Test name */
+  name: varchar("name", { length: 200 }).notNull(),
+  
+  /** Test status */
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // draft, running, completed
+  
+  /** Variant A configuration */
+  variantAName: varchar("variantAName", { length: 100 }).default("Variant A"),
+  variantASubjectLine: varchar("variantASubjectLine", { length: 200 }),
+  variantASectionOrder: json("variantASectionOrder").$type<string[]>(),
+  variantAIncludeSections: json("variantAIncludeSections").$type<Record<string, boolean>>(),
+  
+  /** Variant B configuration */
+  variantBName: varchar("variantBName", { length: 100 }).default("Variant B"),
+  variantBSubjectLine: varchar("variantBSubjectLine", { length: 200 }),
+  variantBSectionOrder: json("variantBSectionOrder").$type<string[]>(),
+  variantBIncludeSections: json("variantBIncludeSections").$type<Record<string, boolean>>(),
+  
+  /** Metrics for Variant A */
+  variantASent: int("variantASent").default(0),
+  variantAOpened: int("variantAOpened").default(0),
+  variantAClicked: int("variantAClicked").default(0),
+  
+  /** Metrics for Variant B */
+  variantBSent: int("variantBSent").default(0),
+  variantBOpened: int("variantBOpened").default(0),
+  variantBClicked: int("variantBClicked").default(0),
+  
+  /** Winner determination */
+  winningVariant: varchar("winningVariant", { length: 1 }), // A or B
+  winningReason: text("winningReason"),
+  
+  /** Test duration */
+  startedAt: timestamp("startedAt"),
+  completedAt: timestamp("completedAt"),
+  
+  /** Number of digest sends to include in test */
+  testDuration: int("testDuration").default(4), // Number of digest sends
+  
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DigestABTest = typeof digestABTests.$inferSelect;
+export type InsertDigestABTest = typeof digestABTests.$inferInsert;
