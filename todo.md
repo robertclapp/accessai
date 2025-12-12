@@ -1046,3 +1046,36 @@
 - [x] Add webhook signature verification stubs
 - [x] Register webhook routes in server
 - [x] Write tests for webhook endpoints (785 tests passing)
+
+
+## Webhook Signature Verification (New)
+- [x] Implement SendGrid ECDSA signature verification
+- [x] Implement Mailgun HMAC-SHA256 signature verification
+- [x] Implement AWS SES SNS message signature verification
+- [x] Implement Postmark webhook signature verification
+- [x] Add signature verification middleware
+- [x] Add environment variables for webhook secrets (getWebhookSecret helper)
+- [x] Add timestamp validation to prevent replay attacks
+- [x] Write tests for signature verification (830 tests passing)
+
+## Email Deliverability Dashboard (New)
+- [x] Create AdminDeliverability page component (/admin/deliverability)
+- [x] Add delivery rate metrics (sent, delivered, bounced, complained)
+- [x] Add bounce trend chart over time (7/14/30/60/90 days)
+- [x] Add bounce type distribution visualization
+- [x] Add top bouncing domains table
+- [x] Add deliverability score calculation (0-100 with A+ to F grade)
+- [x] Add route to App.tsx
+- [x] Write tests for the dashboard (830 tests passing)
+
+## Bulk Suppression List Import/Export (New)
+- [x] Add CSV export functionality for suppression list
+- [x] Add CSV import functionality with validation
+- [x] Add import preview with valid/invalid email counts
+- [x] Add bulk add to suppression list API
+- [x] Add email validation for imports
+- [x] Add suppression reason selector for imports
+- [x] Add file upload support for CSV imports
+- [x] Add search suppression list functionality
+- [x] Update AdminSuppressionList page with import/export buttons
+- [x] Write tests for import/export (830 tests passing)

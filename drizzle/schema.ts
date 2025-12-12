@@ -1661,7 +1661,7 @@ export type InsertEmailBounce = typeof emailBounces.$inferInsert;
 export const emailSuppressionList = mysqlTable('email_suppression_list', {
   id: int('id').autoincrement().primaryKey(),
   email: varchar('email', { length: 255 }).notNull().unique(),
-  reason: mysqlEnum('reason', ['hard_bounce', 'complaint', 'manual', 'unsubscribe']).notNull(),
+  reason: mysqlEnum('reason', ['hard_bounce', 'soft_bounce', 'complaint', 'manual', 'unsubscribe']).notNull(),
   bounceCount: int('bounce_count').notNull().default(1),
   lastBounceAt: timestamp('last_bounce_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),

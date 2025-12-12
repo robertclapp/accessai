@@ -8084,3 +8084,275 @@ export async function getRecentBounces(limit = 50) {
     .orderBy(desc(emailBounces.createdAt))
     .limit(limit);
 }
+
+
+// ============================================
+// EMAIL DELIVERABILITY DASHBOARD
+// ============================================
+
+/**
+ * Get email deliverability metrics for the dashboard
+ */
+export async function getDeliverabilityMetrics() {
+  const db = await getDb();
+  if (!db) return {
+    totalSent: 0,
+    totalDelivered: 0,
+    totalBounced: 0,
+    totalComplaints: 0,
+    deliveryRate: 0,
+    bounceRate: 0,
+    complaintRate: 0,
+  };
+
+  // Get bounce stats
+  const bounceStats = await getBounceStats();
+  
+  // Get total emails sent from digest tracking
+  const digestTracking = await db.select().from(digestDeliveryTracking);
+  const totalSent = digestTracking.length;
+  
+  // Calculate metrics
+  const totalBounced = bounceStats.hard + bounceStats.soft;
+  const totalComplaints = bounceStats.complaint;
+  const totalDelivered = Math.max(0, totalSent - totalBounced);
+  
+  const deliveryRate = totalSent > 0 ? (totalDelivered / totalSent) * 100 : 100;
+  const bounceRate = totalSent > 0 ? (totalBounced / totalSent) * 100 : 0;
+  const complaintRate = totalSent > 0 ? (totalComplaints / totalSent) * 100 : 0;
+
+  return {
+    totalSent,
+    totalDelivered,
+    totalBounced,
+    totalComplaints,
+    deliveryRate: Math.round(deliveryRate * 100) / 100,
+    bounceRate: Math.round(bounceRate * 100) / 100,
+    complaintRate: Math.round(complaintRate * 100) / 100,
+  };
+}
+
+/**
+ * Get bounce trends over time (daily aggregation)
+ */
+export async function getBounceTrends(days: number = 30) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  
+  const bounces = await db.select()
+    .from(emailBounces)
+    .where(gte(emailBounces.createdAt, startDate))
+    .orderBy(asc(emailBounces.createdAt));
+
+  // Group by date
+  const trendMap = new Map<string, { date: string; hard: number; soft: number; complaint: number; total: number }>();
+  
+  for (const bounce of bounces) {
+    const dateStr = bounce.createdAt ? new Date(bounce.createdAt).toISOString().split('T')[0] : 'unknown';
+    
+    if (!trendMap.has(dateStr)) {
+      trendMap.set(dateStr, { date: dateStr, hard: 0, soft: 0, complaint: 0, total: 0 });
+    }
+    
+    const entry = trendMap.get(dateStr)!;
+    entry.total++;
+    
+    if (bounce.bounceType === 'hard') entry.hard++;
+    else if (bounce.bounceType === 'soft') entry.soft++;
+    else if (bounce.bounceType === 'complaint') entry.complaint++;
+  }
+
+  // Fill in missing dates with zeros
+  const result = [];
+  const currentDate = new Date(startDate);
+  const endDate = new Date();
+  
+  while (currentDate <= endDate) {
+    const dateStr = currentDate.toISOString().split('T')[0];
+    if (trendMap.has(dateStr)) {
+      result.push(trendMap.get(dateStr)!);
+    } else {
+      result.push({ date: dateStr, hard: 0, soft: 0, complaint: 0, total: 0 });
+    }
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+
+  return result;
+}
+
+/**
+ * Get top bouncing domains
+ */
+export async function getTopBouncingDomains(limit: number = 10) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const bounces = await db.select().from(emailBounces);
+  
+  // Extract domains and count bounces
+  const domainMap = new Map<string, { domain: string; hard: number; soft: number; complaint: number; total: number }>();
+  
+  for (const bounce of bounces) {
+    const domain = bounce.email.split('@')[1] || 'unknown';
+    
+    if (!domainMap.has(domain)) {
+      domainMap.set(domain, { domain, hard: 0, soft: 0, complaint: 0, total: 0 });
+    }
+    
+    const entry = domainMap.get(domain)!;
+    entry.total++;
+    
+    if (bounce.bounceType === 'hard') entry.hard++;
+    else if (bounce.bounceType === 'soft') entry.soft++;
+    else if (bounce.bounceType === 'complaint') entry.complaint++;
+  }
+
+  // Sort by total bounces and take top N
+  return Array.from(domainMap.values())
+    .sort((a, b) => b.total - a.total)
+    .slice(0, limit);
+}
+
+/**
+ * Get bounce type distribution
+ */
+export async function getBounceTypeDistribution() {
+  const stats = await getBounceStats();
+  
+  return [
+    { type: 'Hard Bounce', count: stats.hard, color: '#ef4444' },
+    { type: 'Soft Bounce', count: stats.soft, color: '#f59e0b' },
+    { type: 'Complaint', count: stats.complaint, color: '#f97316' },
+    { type: 'Unsubscribe', count: stats.unsubscribe, color: '#6366f1' },
+  ].filter(item => item.count > 0);
+}
+
+/**
+ * Calculate deliverability score (0-100)
+ */
+export async function getDeliverabilityScore() {
+  const metrics = await getDeliverabilityMetrics();
+  
+  // Score calculation:
+  // - Start with 100
+  // - Subtract points for bounces and complaints
+  // - Hard bounces: -2 points per 1% bounce rate
+  // - Soft bounces: -1 point per 1% bounce rate
+  // - Complaints: -5 points per 0.1% complaint rate
+  
+  let score = 100;
+  
+  // Penalty for bounce rate
+  score -= metrics.bounceRate * 1.5;
+  
+  // Penalty for complaint rate (complaints are more serious)
+  score -= metrics.complaintRate * 50;
+  
+  // Ensure score is between 0 and 100
+  score = Math.max(0, Math.min(100, score));
+  
+  // Determine grade
+  let grade: string;
+  if (score >= 95) grade = 'A+';
+  else if (score >= 90) grade = 'A';
+  else if (score >= 85) grade = 'B+';
+  else if (score >= 80) grade = 'B';
+  else if (score >= 75) grade = 'C+';
+  else if (score >= 70) grade = 'C';
+  else if (score >= 60) grade = 'D';
+  else grade = 'F';
+
+  return {
+    score: Math.round(score),
+    grade,
+    metrics,
+  };
+}
+
+/**
+ * Bulk add emails to suppression list
+ */
+type SuppressionReason = 'hard_bounce' | 'soft_bounce' | 'complaint' | 'manual' | 'unsubscribe';
+
+export async function bulkAddToSuppressionList(emails: { email: string; reason: string }[]) {
+  const db = await getDb();
+  if (!db) return { added: 0, skipped: 0, errors: [] as string[] };
+
+  let added = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  const validReasons: SuppressionReason[] = ['hard_bounce', 'soft_bounce', 'complaint', 'manual', 'unsubscribe'];
+
+  for (const { email, reason } of emails) {
+    try {
+      // Validate reason
+      const validReason: SuppressionReason = validReasons.includes(reason as SuppressionReason) 
+        ? reason as SuppressionReason 
+        : 'manual';
+
+      // Check if already exists
+      const existing = await db.select()
+        .from(emailSuppressionList)
+        .where(eq(emailSuppressionList.email, email))
+        .limit(1);
+
+      if (existing[0]) {
+        skipped++;
+        continue;
+      }
+
+      await db.insert(emailSuppressionList).values({
+        email,
+        reason: validReason,
+        lastBounceAt: new Date(),
+      });
+      added++;
+    } catch (error) {
+      errors.push(`Failed to add ${email}: ${error}`);
+    }
+  }
+
+  return { added, skipped, errors };
+}
+
+/**
+ * Export suppression list as array for CSV generation
+ */
+export async function exportSuppressionList(startDate?: Date, endDate?: Date) {
+  const db = await getDb();
+  if (!db) return [];
+
+  let query = db.select().from(emailSuppressionList);
+  
+  if (startDate && endDate) {
+    query = query.where(and(
+      gte(emailSuppressionList.createdAt, startDate),
+      lte(emailSuppressionList.createdAt, endDate)
+    )) as typeof query;
+  } else if (startDate) {
+    query = query.where(gte(emailSuppressionList.createdAt, startDate)) as typeof query;
+  } else if (endDate) {
+    query = query.where(lte(emailSuppressionList.createdAt, endDate)) as typeof query;
+  }
+
+  return query.orderBy(desc(emailSuppressionList.createdAt));
+}
+
+/**
+ * Search suppression list by email
+ */
+export async function searchSuppressionList(searchQuery: string, limit = 100, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+
+  return db.select()
+    .from(emailSuppressionList)
+    .where(like(emailSuppressionList.email, `%${searchQuery}%`))
+    .orderBy(desc(emailSuppressionList.createdAt))
+    .limit(limit)
+    .offset(offset);
+}

@@ -3665,6 +3665,99 @@ ${aiContext}`
         await updatePushNotificationPreferences(ctx.user.id, input);
         return { success: true };
       }),
+
+    // Email Deliverability Dashboard endpoints
+    getDeliverabilityMetrics: protectedProcedure
+      .query(async ({ ctx }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { getDeliverabilityMetrics } = await import('./db');
+        return getDeliverabilityMetrics();
+      }),
+
+    getBounceTrends: protectedProcedure
+      .input(z.object({ days: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { getBounceTrends } = await import('./db');
+        return getBounceTrends(input?.days);
+      }),
+
+    getTopBouncingDomains: protectedProcedure
+      .input(z.object({ limit: z.number().optional() }).optional())
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { getTopBouncingDomains } = await import('./db');
+        return getTopBouncingDomains(input?.limit);
+      }),
+
+    getBounceTypeDistribution: protectedProcedure
+      .query(async ({ ctx }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { getBounceTypeDistribution } = await import('./db');
+        return getBounceTypeDistribution();
+      }),
+
+    getDeliverabilityScore: protectedProcedure
+      .query(async ({ ctx }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { getDeliverabilityScore } = await import('./db');
+        return getDeliverabilityScore();
+      }),
+
+    // Bulk suppression list operations
+    bulkAddToSuppression: protectedProcedure
+      .input(z.object({
+        emails: z.array(z.object({
+          email: z.string().email(),
+          reason: z.string(),
+        })),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { bulkAddToSuppressionList } = await import('./db');
+        return bulkAddToSuppressionList(input.emails);
+      }),
+
+    exportSuppressionList: protectedProcedure
+      .input(z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+      }).optional())
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { exportSuppressionList } = await import('./db');
+        const startDate = input?.startDate ? new Date(input.startDate) : undefined;
+        const endDate = input?.endDate ? new Date(input.endDate) : undefined;
+        return exportSuppressionList(startDate, endDate);
+      }),
+
+    searchSuppressionList: protectedProcedure
+      .input(z.object({
+        query: z.string(),
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+      }))
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { searchSuppressionList } = await import('./db');
+        return searchSuppressionList(input.query, input.limit, input.offset);
+      }),
   }),
 
   // ============================================

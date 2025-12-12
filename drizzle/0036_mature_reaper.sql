@@ -1,0 +1,1 @@
+ALTER TABLE `email_suppression_list` MODIFY COLUMN `reason` enum('hard_bounce','soft_bounce','complaint','manual','unsubscribe') NOT NULL;
