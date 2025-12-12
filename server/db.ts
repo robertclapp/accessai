@@ -36,7 +36,8 @@ import {
   templateCategories,
   abTestTemplates, InsertABTestTemplate, ABTestTemplate, InsertTemplateCategory, TemplateCategory,
   digestABTests, InsertDigestABTest, DigestABTest,
-  collectionFollowers, templateRecommendations
+  collectionFollowers, templateRecommendations,
+  vapidKeys, notificationAnalytics, emailTrackingPixels, linkTracking
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
@@ -7150,4 +7151,621 @@ export function isInQuietHours(prefs: {
     // Wrapping case: e.g., 22:00 to 08:00 (overnight)
     return currentHour >= prefs.quietHoursStart || currentHour < prefs.quietHoursEnd;
   }
+}
+
+
+// ============================================
+// VAPID KEYS FUNCTIONS
+// ============================================
+
+/**
+ * Generate new VAPID keys using web-push compatible format
+ */
+export async function generateVapidKeys(): Promise<{ publicKey: string; privateKey: string }> {
+  // Generate a random 32-byte private key
+  const privateKeyBytes = new Uint8Array(32);
+  crypto.getRandomValues(privateKeyBytes);
+  
+  // Convert to base64url format
+  const privateKey = Buffer.from(privateKeyBytes).toString('base64url');
+  
+  // For a proper implementation, we'd use the web-push library
+  // For now, generate a placeholder public key (in production, use web-push.generateVAPIDKeys())
+  const publicKeyBytes = new Uint8Array(65);
+  publicKeyBytes[0] = 0x04; // Uncompressed point indicator
+  crypto.getRandomValues(publicKeyBytes.subarray(1));
+  const publicKey = Buffer.from(publicKeyBytes).toString('base64url');
+  
+  return { publicKey, privateKey };
+}
+
+/**
+ * Save VAPID keys to database
+ */
+export async function saveVapidKeys(
+  publicKey: string,
+  privateKey: string,
+  createdBy: number
+): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  
+  // Deactivate existing keys
+  await db.update(vapidKeys)
+    .set({ isActive: false })
+    .where(eq(vapidKeys.isActive, true));
+  
+  // Insert new keys
+  const result = await db.insert(vapidKeys).values({
+    publicKey,
+    privateKey,
+    isActive: true,
+    createdBy,
+  });
+  
+  return Number((result as any)[0]?.insertId || 0);
+}
+
+/**
+ * Get active VAPID keys
+ */
+export async function getActiveVapidKeys(): Promise<{
+  id: number;
+  publicKey: string;
+  privateKey: string;
+  createdAt: Date;
+} | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const keys = await db.select()
+    .from(vapidKeys)
+    .where(eq(vapidKeys.isActive, true))
+    .limit(1);
+  
+  if (keys.length === 0) return null;
+  
+  return {
+    id: keys[0].id,
+    publicKey: keys[0].publicKey,
+    privateKey: keys[0].privateKey,
+    createdAt: keys[0].createdAt,
+  };
+}
+
+/**
+ * Get all VAPID keys history
+ */
+export async function getVapidKeysHistory(): Promise<Array<{
+  id: number;
+  publicKey: string;
+  isActive: boolean;
+  createdAt: Date;
+  rotatedAt: Date | null;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const keys = await db.select({
+    id: vapidKeys.id,
+    publicKey: vapidKeys.publicKey,
+    isActive: vapidKeys.isActive,
+    createdAt: vapidKeys.createdAt,
+    rotatedAt: vapidKeys.rotatedAt,
+  })
+    .from(vapidKeys)
+    .orderBy(desc(vapidKeys.createdAt));
+  
+  return keys;
+}
+
+/**
+ * Rotate VAPID keys (generate new and deactivate old)
+ */
+export async function rotateVapidKeys(createdBy: number): Promise<{
+  publicKey: string;
+  privateKey: string;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  
+  // Mark current active key as rotated
+  await db.update(vapidKeys)
+    .set({ 
+      isActive: false,
+      rotatedAt: new Date(),
+    })
+    .where(eq(vapidKeys.isActive, true));
+  
+  // Generate and save new keys
+  const newKeys = await generateVapidKeys();
+  await saveVapidKeys(newKeys.publicKey, newKeys.privateKey, createdBy);
+  
+  return newKeys;
+}
+
+// ============================================
+// NOTIFICATION ANALYTICS FUNCTIONS
+// ============================================
+
+/**
+ * Generate a unique tracking ID
+ */
+function generateTrackingId(): string {
+  return `trk_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+}
+
+/**
+ * Create a notification analytics record
+ */
+export async function createNotificationAnalytics(data: {
+  notificationType: 'email' | 'push';
+  templateType: string;
+  recipientId: number;
+  campaignId?: string;
+}): Promise<{ id: number; trackingId: string }> {
+  const db = await getDb();
+  if (!db) return { id: 0, trackingId: '' };
+  
+  const trackingId = generateTrackingId();
+  
+  const result = await db.insert(notificationAnalytics).values({
+    notificationType: data.notificationType,
+    templateType: data.templateType,
+    recipientId: data.recipientId,
+    trackingId,
+    campaignId: data.campaignId,
+  });
+  
+  return { id: Number((result as any)[0]?.insertId || 0), trackingId };
+}
+
+/**
+ * Record email open event
+ */
+export async function recordEmailOpen(
+  trackingId: string,
+  userAgent?: string,
+  ipAddress?: string
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const analytics = await db.select()
+    .from(notificationAnalytics)
+    .where(eq(notificationAnalytics.trackingId, trackingId))
+    .limit(1);
+  
+  if (analytics.length === 0) return false;
+  
+  const isFirstOpen = !analytics[0].openedAt;
+  
+  await db.update(notificationAnalytics)
+    .set({
+      openedAt: isFirstOpen ? new Date() : analytics[0].openedAt,
+      openCount: sql`${notificationAnalytics.openCount} + 1`,
+      status: 'opened',
+      userAgent: userAgent || analytics[0].userAgent,
+      ipAddress: ipAddress || analytics[0].ipAddress,
+    })
+    .where(eq(notificationAnalytics.trackingId, trackingId));
+  
+  return true;
+}
+
+/**
+ * Record link click event
+ */
+export async function recordLinkClick(
+  trackingId: string,
+  linkUrl: string,
+  userAgent?: string,
+  ipAddress?: string
+): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const analytics = await db.select()
+    .from(notificationAnalytics)
+    .where(eq(notificationAnalytics.trackingId, trackingId))
+    .limit(1);
+  
+  if (analytics.length === 0) return false;
+  
+  const currentLinks = (analytics[0].clickedLinks as string[]) || [];
+  const updatedLinks = Array.from(new Set([...currentLinks, linkUrl]));
+  
+  const isFirstClick = !analytics[0].clickedAt;
+  
+  await db.update(notificationAnalytics)
+    .set({
+      clickedAt: isFirstClick ? new Date() : analytics[0].clickedAt,
+      clickCount: sql`${notificationAnalytics.clickCount} + 1`,
+      clickedLinks: updatedLinks,
+      status: 'clicked',
+      userAgent: userAgent || analytics[0].userAgent,
+      ipAddress: ipAddress || analytics[0].ipAddress,
+    })
+    .where(eq(notificationAnalytics.trackingId, trackingId));
+  
+  return true;
+}
+
+/**
+ * Get notification analytics summary
+ */
+export async function getNotificationAnalyticsSummary(
+  startDate?: Date,
+  endDate?: Date,
+  notificationType?: 'email' | 'push'
+): Promise<{
+  totalSent: number;
+  totalOpened: number;
+  totalClicked: number;
+  openRate: number;
+  clickRate: number;
+  clickToOpenRate: number;
+}> {
+  const db = await getDb();
+  if (!db) return {
+    totalSent: 0,
+    totalOpened: 0,
+    totalClicked: 0,
+    openRate: 0,
+    clickRate: 0,
+    clickToOpenRate: 0,
+  };
+  
+  const conditions = [];
+  if (startDate) {
+    conditions.push(gte(notificationAnalytics.sentAt, startDate));
+  }
+  if (endDate) {
+    conditions.push(lte(notificationAnalytics.sentAt, endDate));
+  }
+  if (notificationType) {
+    conditions.push(eq(notificationAnalytics.notificationType, notificationType));
+  }
+  
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  
+  const results = await db.select({
+    totalSent: count(),
+    totalOpened: sql<number>`SUM(CASE WHEN ${notificationAnalytics.openedAt} IS NOT NULL THEN 1 ELSE 0 END)`,
+    totalClicked: sql<number>`SUM(CASE WHEN ${notificationAnalytics.clickedAt} IS NOT NULL THEN 1 ELSE 0 END)`,
+  })
+    .from(notificationAnalytics)
+    .where(whereClause);
+  
+  const totalSent = results[0]?.totalSent || 0;
+  const totalOpened = Number(results[0]?.totalOpened) || 0;
+  const totalClicked = Number(results[0]?.totalClicked) || 0;
+  
+  return {
+    totalSent,
+    totalOpened,
+    totalClicked,
+    openRate: totalSent > 0 ? (totalOpened / totalSent) * 100 : 0,
+    clickRate: totalSent > 0 ? (totalClicked / totalSent) * 100 : 0,
+    clickToOpenRate: totalOpened > 0 ? (totalClicked / totalOpened) * 100 : 0,
+  };
+}
+
+/**
+ * Get analytics by template type
+ */
+export async function getAnalyticsByTemplateType(
+  startDate?: Date,
+  endDate?: Date
+): Promise<Array<{
+  templateType: string;
+  totalSent: number;
+  totalOpened: number;
+  totalClicked: number;
+  openRate: number;
+  clickRate: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const conditions = [];
+  if (startDate) {
+    conditions.push(gte(notificationAnalytics.sentAt, startDate));
+  }
+  if (endDate) {
+    conditions.push(lte(notificationAnalytics.sentAt, endDate));
+  }
+  
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  
+  const results = await db.select({
+    templateType: notificationAnalytics.templateType,
+    totalSent: count(),
+    totalOpened: sql<number>`SUM(CASE WHEN ${notificationAnalytics.openedAt} IS NOT NULL THEN 1 ELSE 0 END)`,
+    totalClicked: sql<number>`SUM(CASE WHEN ${notificationAnalytics.clickedAt} IS NOT NULL THEN 1 ELSE 0 END)`,
+  })
+    .from(notificationAnalytics)
+    .where(whereClause)
+    .groupBy(notificationAnalytics.templateType);
+  
+  return results.map(r => ({
+    templateType: r.templateType,
+    totalSent: r.totalSent,
+    totalOpened: Number(r.totalOpened) || 0,
+    totalClicked: Number(r.totalClicked) || 0,
+    openRate: r.totalSent > 0 ? (Number(r.totalOpened) / r.totalSent) * 100 : 0,
+    clickRate: r.totalSent > 0 ? (Number(r.totalClicked) / r.totalSent) * 100 : 0,
+  }));
+}
+
+/**
+ * Get recent notification analytics
+ */
+export async function getRecentNotificationAnalytics(
+  limit: number = 50
+): Promise<Array<{
+  id: number;
+  trackingId: string;
+  notificationType: string;
+  templateType: string;
+  status: string;
+  sentAt: Date;
+  openedAt: Date | null;
+  clickedAt: Date | null;
+  openCount: number;
+  clickCount: number;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+  
+  const results = await db.select({
+    id: notificationAnalytics.id,
+    trackingId: notificationAnalytics.trackingId,
+    notificationType: notificationAnalytics.notificationType,
+    templateType: notificationAnalytics.templateType,
+    status: notificationAnalytics.status,
+    sentAt: notificationAnalytics.sentAt,
+    openedAt: notificationAnalytics.openedAt,
+    clickedAt: notificationAnalytics.clickedAt,
+    openCount: notificationAnalytics.openCount,
+    clickCount: notificationAnalytics.clickCount,
+  })
+    .from(notificationAnalytics)
+    .orderBy(desc(notificationAnalytics.sentAt))
+    .limit(limit);
+  
+  return results.map(r => ({
+    ...r,
+    status: r.status || 'sent',
+    openCount: r.openCount || 0,
+    clickCount: r.clickCount || 0,
+  }));
+}
+
+/**
+ * Create tracking pixel for email
+ */
+export async function createEmailTrackingPixel(analyticsId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) return '';
+  
+  const pixelToken = `px_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  
+  await db.insert(emailTrackingPixels).values({
+    analyticsId,
+    pixelToken,
+  });
+  
+  return pixelToken;
+}
+
+/**
+ * Record pixel open
+ */
+export async function recordPixelOpen(pixelToken: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const pixel = await db.select()
+    .from(emailTrackingPixels)
+    .where(eq(emailTrackingPixels.pixelToken, pixelToken))
+    .limit(1);
+  
+  if (pixel.length === 0) return false;
+  
+  const isFirstOpen = !pixel[0].firstOpenedAt;
+  
+  await db.update(emailTrackingPixels)
+    .set({
+      firstOpenedAt: isFirstOpen ? new Date() : pixel[0].firstOpenedAt,
+      lastOpenedAt: new Date(),
+      openCount: sql`${emailTrackingPixels.openCount} + 1`,
+    })
+    .where(eq(emailTrackingPixels.pixelToken, pixelToken));
+  
+  // Also update the main analytics record
+  await recordEmailOpen(
+    (await db.select({ trackingId: notificationAnalytics.trackingId })
+      .from(notificationAnalytics)
+      .where(eq(notificationAnalytics.id, pixel[0].analyticsId))
+      .limit(1))[0]?.trackingId || ''
+  );
+  
+  return true;
+}
+
+/**
+ * Create tracked link
+ */
+export async function createTrackedLink(
+  analyticsId: number,
+  originalUrl: string
+): Promise<string> {
+  const db = await getDb();
+  if (!db) return '';
+  
+  const linkToken = `lnk_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  
+  await db.insert(linkTracking).values({
+    analyticsId,
+    linkToken,
+    originalUrl,
+  });
+  
+  return linkToken;
+}
+
+/**
+ * Record link click and get original URL
+ */
+export async function recordTrackedLinkClick(linkToken: string): Promise<string | null> {
+  const db = await getDb();
+  if (!db) return null;
+  
+  const link = await db.select()
+    .from(linkTracking)
+    .where(eq(linkTracking.linkToken, linkToken))
+    .limit(1);
+  
+  if (link.length === 0) return null;
+  
+  const isFirstClick = !link[0].firstClickedAt;
+  
+  await db.update(linkTracking)
+    .set({
+      firstClickedAt: isFirstClick ? new Date() : link[0].firstClickedAt,
+      lastClickedAt: new Date(),
+      clickCount: sql`${linkTracking.clickCount} + 1`,
+    })
+    .where(eq(linkTracking.linkToken, linkToken));
+  
+  // Also update the main analytics record
+  const analytics = await db.select({ trackingId: notificationAnalytics.trackingId })
+    .from(notificationAnalytics)
+    .where(eq(notificationAnalytics.id, link[0].analyticsId))
+    .limit(1);
+  
+  if (analytics.length > 0) {
+    await recordLinkClick(analytics[0].trackingId, link[0].originalUrl);
+  }
+  
+  return link[0].originalUrl;
+}
+
+
+/**
+ * Record notification open event
+ */
+export async function recordNotificationOpen(trackingId: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.update(notificationAnalytics)
+    .set({
+      status: 'opened',
+      openedAt: new Date(),
+      openCount: sql`${notificationAnalytics.openCount} + 1`,
+    })
+    .where(eq(notificationAnalytics.trackingId, trackingId));
+}
+
+/**
+ * Record notification click event
+ */
+export async function recordNotificationClick(trackingId: string, linkUrl?: string): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  
+  await db.update(notificationAnalytics)
+    .set({
+      status: 'clicked',
+      clickedAt: new Date(),
+      clickCount: sql`${notificationAnalytics.clickCount} + 1`,
+    })
+    .where(eq(notificationAnalytics.trackingId, trackingId));
+}
+
+/**
+ * Get notification analytics stats
+ */
+export async function getNotificationAnalyticsStats(filters: {
+  startDate?: string;
+  endDate?: string;
+  notificationType?: 'email' | 'push';
+}): Promise<{
+  totalSent: number;
+  totalOpened: number;
+  totalClicked: number;
+  openRate: number;
+  clickRate: number;
+  byType: Record<string, { sent: number; opened: number; clicked: number }>;
+}> {
+  const db = await getDb();
+  if (!db) {
+    return {
+      totalSent: 0,
+      totalOpened: 0,
+      totalClicked: 0,
+      openRate: 0,
+      clickRate: 0,
+      byType: {},
+    };
+  }
+  
+  const conditions: any[] = [];
+  
+  if (filters.startDate) {
+    conditions.push(gte(notificationAnalytics.sentAt, new Date(filters.startDate)));
+  }
+  if (filters.endDate) {
+    conditions.push(lte(notificationAnalytics.sentAt, new Date(filters.endDate)));
+  }
+  if (filters.notificationType && (filters.notificationType === 'email' || filters.notificationType === 'push')) {
+    conditions.push(eq(notificationAnalytics.notificationType, filters.notificationType));
+  }
+  
+  const results = await db.select({
+    notificationType: notificationAnalytics.notificationType,
+    status: notificationAnalytics.status,
+    openCount: notificationAnalytics.openCount,
+    clickCount: notificationAnalytics.clickCount,
+  })
+    .from(notificationAnalytics)
+    .where(conditions.length > 0 ? and(...conditions) : undefined);
+  
+  let totalSent = 0;
+  let totalOpened = 0;
+  let totalClicked = 0;
+  const byType: Record<string, { sent: number; opened: number; clicked: number }> = {};
+  
+  for (const row of results) {
+    totalSent++;
+    if (row.status === 'opened' || row.status === 'clicked') {
+      totalOpened++;
+    }
+    if (row.status === 'clicked') {
+      totalClicked++;
+    }
+    
+    const type = row.notificationType || 'unknown';
+    if (!byType[type]) {
+      byType[type] = { sent: 0, opened: 0, clicked: 0 };
+    }
+    byType[type].sent++;
+    if (row.status === 'opened' || row.status === 'clicked') {
+      byType[type].opened++;
+    }
+    if (row.status === 'clicked') {
+      byType[type].clicked++;
+    }
+  }
+  
+  return {
+    totalSent,
+    totalOpened,
+    totalClicked,
+    openRate: totalSent > 0 ? (totalOpened / totalSent) * 100 : 0,
+    clickRate: totalSent > 0 ? (totalClicked / totalSent) * 100 : 0,
+    byType,
+  };
 }

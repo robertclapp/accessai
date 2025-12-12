@@ -3412,6 +3412,76 @@ ${aiContext}`
         return { success };
       }),
     
+    // Notification analytics endpoints
+    trackNotificationOpen: publicProcedure
+      .input(z.object({ trackingId: z.string() }))
+      .mutation(async ({ input }) => {
+        const { recordNotificationOpen } = await import('./db');
+        await recordNotificationOpen(input.trackingId);
+        return { success: true };
+      }),
+
+    trackNotificationClick: publicProcedure
+      .input(z.object({ trackingId: z.string(), linkUrl: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        const { recordNotificationClick } = await import('./db');
+        await recordNotificationClick(input.trackingId, input.linkUrl);
+        return { success: true };
+      }),
+
+    getNotificationAnalytics: protectedProcedure
+      .input(z.object({
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
+        notificationType: z.enum(['email', 'push']).optional(),
+      }))
+      .query(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { getNotificationAnalyticsStats } = await import('./db');
+        return getNotificationAnalyticsStats(input);
+      }),
+
+    getRecentNotifications: protectedProcedure
+      .input(z.object({ limit: z.number().optional() }))
+      .query(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        const { getRecentNotificationAnalytics } = await import('./db');
+        return getRecentNotificationAnalytics(input.limit || 50);
+      }),
+
+    // Email template preview endpoint
+    previewEmailTemplate: protectedProcedure
+      .input(z.object({
+        templateType: z.enum(['digest', 'activity', 'welcome']),
+        data: z.any(),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        if (ctx.user.role !== 'admin') {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
+        }
+        
+        const { digestEmailTemplate, activityNotificationTemplate, welcomeEmailTemplate } = await import('./services/emailTemplates');
+        
+        let html = '';
+        switch (input.templateType) {
+          case 'digest':
+            html = digestEmailTemplate(input.data);
+            break;
+          case 'activity':
+            html = activityNotificationTemplate(input.data);
+            break;
+          case 'welcome':
+            html = welcomeEmailTemplate(input.data);
+            break;
+        }
+        
+        return { html };
+      }),
+
     // Job history endpoints
     getJobHistory: protectedProcedure
       .input(z.object({

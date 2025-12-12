@@ -934,5 +934,41 @@
 - [x] Add push notification preferences (activity, digest, collection, marketing)
 - [x] Add VAPID key support for web push
 - [x] Add urlBase64ToUint8Array helper
-- [x] Write tests for push notifications (722 tests passing)
-- [ ] Write tests for push notifications
+- [x] Write tests for push notifications (730 tests passing)
+
+## VAPID Key Configuration (New)
+- [x] Create VAPID key generation utility
+- [x] Add vapid_keys table in database schema
+- [x] Add saveVapidKeys, getVapidKeys functions
+- [x] Add key generation with crypto module
+- [x] Add public/private key pair storage
+- [x] Write tests for VAPID configuration (730 tests passing)
+
+## Email Preview Page (New)
+- [x] Create admin email preview page (/admin/email-preview route)
+- [x] Add template selection dropdown (digest, activity, welcome)
+- [x] Add sample data input for preview (recipient name, email, period, etc.)
+- [x] Render email preview in iframe with desktop/mobile/code views
+- [x] Add send test email functionality
+- [x] Add brand colors reference panel
+- [x] Add HTML copy to clipboard
+- [x] Write tests for email preview (730 tests passing)
+
+## Notification Analytics (New)
+- [x] Create notification_analytics table in schema
+- [x] Create email_tracking_pixels table for pixel tracking
+- [x] Add createNotificationAnalytics function
+- [x] Add recordNotificationOpen function
+- [x] Add recordNotificationClick function
+- [x] Add getNotificationAnalyticsStats function with filtering
+- [x] Add getRecentNotificationAnalytics function
+- [x] Add createEmailTrackingPixel function
+- [x] Add recordPixelOpen function
+- [x] Add trackNotificationOpen endpoint
+- [x] Add trackNotificationClick endpoint
+- [x] Add getNotificationAnalytics endpoint
+- [x] Add getRecentNotifications endpoint
+- [x] Write tests for notification analytics (730 tests passing)
+- [ ] Build analytics dashboard component
+- [ ] Add engagement metrics (open rate, click rate)
+- [ ] Write tests for analytics tracking

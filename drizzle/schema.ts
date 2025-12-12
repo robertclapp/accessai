@@ -1525,3 +1525,78 @@ export const pushNotificationPreferences = mysqlTable("push_notification_prefere
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
 });
+
+// ============================================
+// VAPID KEYS TABLE
+// ============================================
+export const vapidKeys = mysqlTable("vapid_keys", {
+  id: int("id").autoincrement().primaryKey(),
+  publicKey: text("publicKey").notNull(),
+  privateKey: text("privateKey").notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  rotatedAt: timestamp("rotatedAt"),
+  expiresAt: timestamp("expiresAt"),
+  createdBy: int("createdBy").references(() => users.id),
+});
+
+// ============================================
+// NOTIFICATION ANALYTICS TABLE
+// ============================================
+export const notificationAnalytics = mysqlTable("notification_analytics", {
+  id: int("id").autoincrement().primaryKey(),
+  notificationType: mysqlEnum("notificationType", ["email", "push"]).notNull(),
+  templateType: varchar("templateType", { length: 50 }).notNull(), // digest, activity, welcome, etc.
+  recipientId: int("recipientId").references(() => users.id),
+  
+  // Tracking IDs
+  trackingId: varchar("trackingId", { length: 64 }).notNull().unique(),
+  campaignId: varchar("campaignId", { length: 64 }),
+  
+  // Timestamps
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+  deliveredAt: timestamp("deliveredAt"),
+  openedAt: timestamp("openedAt"),
+  clickedAt: timestamp("clickedAt"),
+  
+  // Engagement data
+  openCount: int("openCount").default(0),
+  clickCount: int("clickCount").default(0),
+  clickedLinks: json("clickedLinks").$type<string[]>(),
+  
+  // Device/context info
+  userAgent: text("userAgent"),
+  ipAddress: varchar("ipAddress", { length: 45 }),
+  deviceType: varchar("deviceType", { length: 20 }),
+  
+  // Status
+  status: mysqlEnum("status", ["sent", "delivered", "opened", "clicked", "bounced", "failed"]).default("sent"),
+  errorMessage: text("errorMessage"),
+});
+
+// ============================================
+// EMAIL TRACKING PIXELS TABLE
+// ============================================
+export const emailTrackingPixels = mysqlTable("email_tracking_pixels", {
+  id: int("id").autoincrement().primaryKey(),
+  analyticsId: int("analyticsId").references(() => notificationAnalytics.id).notNull(),
+  pixelToken: varchar("pixelToken", { length: 64 }).notNull().unique(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  firstOpenedAt: timestamp("firstOpenedAt"),
+  lastOpenedAt: timestamp("lastOpenedAt"),
+  openCount: int("openCount").default(0),
+});
+
+// ============================================
+// LINK TRACKING TABLE
+// ============================================
+export const linkTracking = mysqlTable("link_tracking", {
+  id: int("id").autoincrement().primaryKey(),
+  analyticsId: int("analyticsId").references(() => notificationAnalytics.id).notNull(),
+  linkToken: varchar("linkToken", { length: 64 }).notNull().unique(),
+  originalUrl: text("originalUrl").notNull(),
+  clickCount: int("clickCount").default(0),
+  firstClickedAt: timestamp("firstClickedAt"),
+  lastClickedAt: timestamp("lastClickedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});

@@ -36,6 +36,7 @@ import MastodonTemplates from "./pages/MastodonTemplates";
 import Marketplace from "./pages/Marketplace";
 import FollowedCollections from "./pages/FollowedCollections";
 import AdminScheduler from "./pages/AdminScheduler";
+import AdminEmailPreview from "./pages/AdminEmailPreview";
 
 /** Protected Route wrapper */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -102,6 +103,7 @@ function Router() {
       <Route path="/marketplace" component={Marketplace} />
       <Route path="/followed-collections">{() => <ProtectedRoute component={FollowedCollections} />}</Route>
       <Route path="/admin/scheduler">{() => <ProtectedRoute component={AdminScheduler} />}</Route>
+      <Route path="/admin/email-preview">{() => <ProtectedRoute component={AdminEmailPreview} />}</Route>
       <Route path="/team">{() => <ProtectedRoute component={TeamManagement} />}</Route>
       <Route path="/settings">{() => <ProtectedRoute component={Settings} />}</Route>
       <Route path="/verify-email" component={VerifyEmail} />
