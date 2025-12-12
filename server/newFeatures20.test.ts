@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import * as path from 'path';
 
 describe('Analytics Dashboard', () => {
   it('should have AdminNotificationAnalytics page component', async () => {
     const fs = await import('fs');
-    const exists = fs.existsSync('/home/ubuntu/accessai/client/src/pages/AdminNotificationAnalytics.tsx');
+    // Use relative path from project root instead of hardcoded absolute path
+    const projectRoot = path.resolve(__dirname, '..');
+    const filePath = path.join(projectRoot, 'client/src/pages/AdminNotificationAnalytics.tsx');
+    const exists = fs.existsSync(filePath);
     expect(exists).toBe(true);
   });
 

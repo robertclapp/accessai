@@ -116,7 +116,8 @@ export async function generateVerificationToken(
 export async function verifyEmailToken(token: string): Promise<VerificationResult> {
   const db = await getDb();
   if (!db) {
-    return { success: false, message: "Database not available" };
+    // Return user-friendly message instead of exposing internal database status
+    return { success: false, message: "Invalid or expired verification link. Please request a new one." };
   }
 
   try {
