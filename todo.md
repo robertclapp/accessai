@@ -1012,3 +1012,37 @@
 - [x] Add getBounceStats function for dashboard
 - [x] Add getRecentBounces function for monitoring
 - [x] Write tests for bounce handling (752 tests passing)
+
+
+## Email Subject A/B Test Management UI (New)
+- [x] Create AdminSubjectTests page component
+- [x] Add create new test form with name and template type
+- [x] Add variant creation with subject line and weight
+- [x] Show test list with status, variants, and metrics
+- [x] Add start/stop/cancel test actions
+- [x] Show winning variant when test completes
+- [x] Add route to App.tsx
+- [x] Write tests for the UI
+
+## Suppression List Management Page (New)
+- [x] Create AdminSuppressionList page component
+- [x] Show suppression list with search and pagination
+- [x] Add email search functionality
+- [x] Show bounce reason and date for each entry
+- [x] Add manual remove from suppression action
+- [x] Add bounce stats summary cards
+- [x] Add recent bounces table
+- [x] Add route to App.tsx
+- [x] Write tests for the page
+
+## Email Provider Webhook Endpoints (New)
+- [x] Create SendGrid webhook endpoint
+- [x] Create AWS SES webhook endpoint
+- [x] Create Mailgun webhook endpoint
+- [x] Create Postmark webhook endpoint
+- [x] Create generic webhook endpoint with auto-detection
+- [x] Parse bounce events from each provider
+- [x] Map provider-specific bounce types to internal types
+- [x] Add webhook signature verification stubs
+- [x] Register webhook routes in server
+- [x] Write tests for webhook endpoints (785 tests passing)

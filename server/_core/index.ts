@@ -8,6 +8,7 @@ import { appRouter } from "../routers";
 import rssRouter from "../rss";
 import sitemapRouter from "../sitemap";
 import digestTrackingRouter from "../digestTracking";
+import emailBounceWebhookRouter from "../webhooks/routes";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { initializeWebSocket } from "./websocket";
@@ -47,6 +48,9 @@ async function startServer() {
   
   // Digest email tracking (open/click tracking)
   app.use(digestTrackingRouter);
+  
+  // Email bounce webhooks for various providers
+  app.use(emailBounceWebhookRouter);
   // tRPC API
   app.use(
     "/api/trpc",

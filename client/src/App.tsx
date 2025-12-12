@@ -38,6 +38,8 @@ import FollowedCollections from "./pages/FollowedCollections";
 import AdminScheduler from "./pages/AdminScheduler";
 import AdminEmailPreview from "./pages/AdminEmailPreview";
 import AdminNotificationAnalytics from "./pages/AdminNotificationAnalytics";
+import AdminSubjectTests from "./pages/AdminSubjectTests";
+import AdminSuppressionList from "./pages/AdminSuppressionList";
 
 /** Protected Route wrapper */
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -106,6 +108,8 @@ function Router() {
       <Route path="/admin/scheduler">{() => <ProtectedRoute component={AdminScheduler} />}</Route>
       <Route path="/admin/email-preview">{() => <ProtectedRoute component={AdminEmailPreview} />}</Route>
       <Route path="/admin/analytics">{() => <ProtectedRoute component={AdminNotificationAnalytics} />}</Route>
+      <Route path="/admin/subject-tests">{() => <ProtectedRoute component={AdminSubjectTests} />}</Route>
+      <Route path="/admin/suppression-list">{() => <ProtectedRoute component={AdminSuppressionList} />}</Route>
       <Route path="/team">{() => <ProtectedRoute component={TeamManagement} />}</Route>
       <Route path="/settings">{() => <ProtectedRoute component={Settings} />}</Route>
       <Route path="/verify-email" component={VerifyEmail} />
