@@ -10,11 +10,11 @@
  * @module services/emailDigest
  */
 
-import { eq, and, gte, lte } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { emailDigestPreferences, users } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
+import { emailDigestPreferences } from "../../drizzle/schema";
 import { notifyOwner } from "../_core/notification";
 import * as db from "../db";
+import { getDb } from "../db";
 import { nanoid } from "nanoid";
 import { PLATFORM_DISPLAY_NAMES } from "../../shared/constants";
 
@@ -82,19 +82,6 @@ interface ScheduledPostSummary {
 }
 
 // ============================================
-// DATABASE HELPERS
-// ============================================
-
-let _db: ReturnType<typeof drizzle> | null = null;
-
-async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
-    _db = drizzle(process.env.DATABASE_URL);
-  }
-  return _db;
-}
-
-// ============================================
 // DIGEST PREFERENCE MANAGEMENT
 // ============================================
 
@@ -134,6 +121,20 @@ export async function getDigestPreferences(userId: number) {
 /**
  * Update digest preferences for a user
  */
+type DigestPreferencesUpdate = {
+  enabled?: boolean;
+  frequency?: "weekly" | "monthly";
+  dayOfWeek?: number;
+  dayOfMonth?: number;
+  hourUtc?: number;
+  includeAnalytics?: boolean;
+  includeGoalProgress?: boolean;
+  includeTopPosts?: boolean;
+  includePlatformComparison?: boolean;
+  includeScheduledPosts?: boolean;
+  sectionOrder?: string | string[];
+};
+
 export async function updateDigestPreferences(
   userId: number,
   updates: Partial<{
@@ -154,7 +155,7 @@ export async function updateDigestPreferences(
   if (!database) return false;
 
   // Convert sectionOrder array to JSON string for storage
-  const dbUpdates: any = { ...updates };
+  const dbUpdates: DigestPreferencesUpdate = { ...updates };
   if (updates.sectionOrder) {
     dbUpdates.sectionOrder = JSON.stringify(updates.sectionOrder);
   }

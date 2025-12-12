@@ -408,19 +408,19 @@ export async function getTeamById(id: number) {
 export async function getUserTeams(userId: number) {
   const db = await getDb();
   if (!db) return [];
-  
+
   // Get teams where user is a member
   const memberships = await db.select().from(teamMembers)
     .where(eq(teamMembers.userId, userId));
-  
+
   if (memberships.length === 0) return [];
-  
+
+  // Use single query with IN clause instead of N+1 queries
   const teamIds = memberships.map(m => m.teamId);
-  const teamResults = await Promise.all(
-    teamIds.map(id => db.select().from(teams).where(eq(teams.id, id)).limit(1))
-  );
-  
-  return teamResults.flat().filter(Boolean);
+  const teamResults = await db.select().from(teams)
+    .where(inArray(teams.id, teamIds));
+
+  return teamResults;
 }
 
 export async function updateTeam(id: number, data: Partial<InsertTeam>) {
@@ -619,40 +619,59 @@ export async function updateAccessibilityReport(id: number, data: Partial<Insert
 export async function getUserAnalyticsSummary(userId: number) {
   const db = await getDb();
   if (!db) return null;
-  
-  const userPosts = await db.select().from(posts)
-    .where(eq(posts.userId, userId));
-  
-  const totalPosts = userPosts.length;
-  const publishedPosts = userPosts.filter(p => p.status === "published").length;
-  const scheduledPosts = userPosts.filter(p => p.status === "scheduled").length;
-  const draftPosts = userPosts.filter(p => p.status === "draft").length;
-  
-  // Calculate average accessibility score
-  const postsWithScores = userPosts.filter(p => p.accessibilityScore !== null);
-  const avgAccessibilityScore = postsWithScores.length > 0
-    ? postsWithScores.reduce((sum, p) => sum + (p.accessibilityScore || 0), 0) / postsWithScores.length
-    : 0;
-  
-  // Aggregate analytics
+
+  // Use efficient SQL aggregation for counts instead of fetching all posts
+  const statusCounts = await db
+    .select({
+      status: posts.status,
+      cnt: count(),
+    })
+    .from(posts)
+    .where(eq(posts.userId, userId))
+    .groupBy(posts.status);
+
+  const statusMap = new Map(statusCounts.map(r => [r.status, Number(r.cnt)]));
+  const publishedPosts = statusMap.get("published") || 0;
+  const scheduledPosts = statusMap.get("scheduled") || 0;
+  const draftPosts = statusMap.get("draft") || 0;
+  const failedPosts = statusMap.get("failed") || 0;
+  const totalPosts = publishedPosts + scheduledPosts + draftPosts + failedPosts;
+
+  // Get average accessibility score using SQL aggregation
+  const [accessibilityResult] = await db
+    .select({
+      avgScore: sql<number>`AVG(${posts.accessibilityScore})`,
+    })
+    .from(posts)
+    .where(and(eq(posts.userId, userId), not(sql`${posts.accessibilityScore} IS NULL`)));
+
+  const avgAccessibilityScore = Math.round(accessibilityResult?.avgScore || 0);
+
+  // For analytics JSON fields, fetch only published posts with analytics
+  // This is more efficient than fetching all posts
+  const postsWithAnalytics = await db
+    .select({ analytics: posts.analytics })
+    .from(posts)
+    .where(and(eq(posts.userId, userId), eq(posts.status, "published")));
+
   let totalImpressions = 0;
   let totalEngagements = 0;
   let totalClicks = 0;
-  
-  userPosts.forEach(p => {
+
+  for (const p of postsWithAnalytics) {
     if (p.analytics) {
       totalImpressions += p.analytics.impressions || 0;
       totalEngagements += p.analytics.engagements || 0;
       totalClicks += p.analytics.clicks || 0;
     }
-  });
-  
+  }
+
   return {
     totalPosts,
     publishedPosts,
     scheduledPosts,
     draftPosts,
-    avgAccessibilityScore: Math.round(avgAccessibilityScore),
+    avgAccessibilityScore,
     totalImpressions,
     totalEngagements,
     totalClicks,
