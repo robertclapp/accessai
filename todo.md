@@ -969,6 +969,46 @@
 - [x] Add getNotificationAnalytics endpoint
 - [x] Add getRecentNotifications endpoint
 - [x] Write tests for notification analytics (730 tests passing)
-- [ ] Build analytics dashboard component
-- [ ] Add engagement metrics (open rate, click rate)
-- [ ] Write tests for analytics tracking
+- [x] Build analytics dashboard component (AdminNotificationAnalytics.tsx)
+- [x] Add engagement metrics (open rate, click rate, click-to-open rate)
+- [x] Write tests for analytics tracking (752 tests passing)
+
+## Analytics Dashboard (New)
+- [x] Create analytics dashboard page with charts (/admin/notification-analytics)
+- [x] Add open rate over time chart (line chart)
+- [x] Add click rate over time chart (line chart)
+- [x] Add notification type breakdown chart (pie chart)
+- [x] Add date range filter (7d, 30d, 90d, all time)
+- [x] Add summary stat cards (total sent, opened, clicked, rates)
+- [x] Add recent notifications table with status
+- [x] Add notification type filter (email, push, all)
+- [x] Write tests for analytics dashboard (752 tests passing)
+
+## Email Subject A/B Testing (New)
+- [x] Create email_subject_tests table in schema
+- [x] Create email_subject_variants table in schema
+- [x] Add createEmailSubjectTest function
+- [x] Add addSubjectVariant function with weight support
+- [x] Implement selectRandomVariant for weighted random selection
+- [x] Add recordVariantOpen function for tracking
+- [x] Add recordVariantClick function for tracking
+- [x] Add checkAndCompleteSubjectTest for auto-completion
+- [x] Add startSubjectTest and cancelSubjectTest functions
+- [x] Add getEmailSubjectTest and getAllSubjectTests functions
+- [x] Add getActiveSubjectTests function
+- [x] Write tests for subject line A/B testing (752 tests passing)
+
+## Email Bounce Handling (New)
+- [x] Create email_bounces table in schema
+- [x] Create email_suppression_list table in schema
+- [x] Add recordBounce function with bounce type classification
+- [x] Implement soft/hard bounce classification (soft, hard, complaint, unsubscribe)
+- [x] Auto-unsubscribe after hard bounces (immediate)
+- [x] Auto-unsubscribe after 3 soft bounces
+- [x] Add addToSuppressionList function
+- [x] Add isEmailSuppressed function for checking before sends
+- [x] Add removeFromSuppressionList function for manual removal
+- [x] Add getSuppressionList function with pagination
+- [x] Add getBounceStats function for dashboard
+- [x] Add getRecentBounces function for monitoring
+- [x] Write tests for bounce handling (752 tests passing)

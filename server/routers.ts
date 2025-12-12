@@ -3412,6 +3412,117 @@ ${aiContext}`
         return { success };
       }),
     
+    // Email Subject A/B Testing endpoints
+    createSubjectTest: protectedProcedure
+      .input(z.object({
+        name: z.string(),
+        templateType: z.string(),
+        confidenceLevel: z.number().optional(),
+        minSampleSize: z.number().optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const { createEmailSubjectTest } = await import('./db');
+        const testId = await createEmailSubjectTest({
+          ...input,
+          createdBy: ctx.user.id,
+        });
+        return { testId };
+      }),
+
+    addSubjectVariant: protectedProcedure
+      .input(z.object({
+        testId: z.number(),
+        subjectLine: z.string(),
+        previewText: z.string().optional(),
+        weight: z.number().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { addSubjectVariant } = await import('./db');
+        const variantId = await addSubjectVariant(input);
+        return { variantId };
+      }),
+
+    getSubjectTest: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .query(async ({ input }) => {
+        const { getEmailSubjectTest } = await import('./db');
+        return getEmailSubjectTest(input.testId);
+      }),
+
+    getAllSubjectTests: protectedProcedure
+      .query(async ({ ctx }) => {
+        const { getAllSubjectTests } = await import('./db');
+        return getAllSubjectTests(ctx.user.id);
+      }),
+
+    startSubjectTest: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ input }) => {
+        const { startSubjectTest } = await import('./db');
+        await startSubjectTest(input.testId);
+        return { success: true };
+      }),
+
+    cancelSubjectTest: protectedProcedure
+      .input(z.object({ testId: z.number() }))
+      .mutation(async ({ input }) => {
+        const { cancelSubjectTest } = await import('./db');
+        await cancelSubjectTest(input.testId);
+        return { success: true };
+      }),
+
+    // Email Bounce Handling endpoints
+    recordBounce: protectedProcedure
+      .input(z.object({
+        email: z.string(),
+        userId: z.number().optional(),
+        bounceType: z.enum(['soft', 'hard', 'complaint', 'unsubscribe']),
+        bounceSubType: z.string().optional(),
+        diagnosticCode: z.string().optional(),
+        notificationId: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        const { recordBounce } = await import('./db');
+        return recordBounce(input);
+      }),
+
+    getSuppressionList: protectedProcedure
+      .input(z.object({
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+      }).optional())
+      .query(async ({ input }) => {
+        const { getSuppressionList } = await import('./db');
+        return getSuppressionList(input?.limit, input?.offset);
+      }),
+
+    removeFromSuppression: protectedProcedure
+      .input(z.object({ email: z.string() }))
+      .mutation(async ({ input }) => {
+        const { removeFromSuppressionList } = await import('./db');
+        return removeFromSuppressionList(input.email);
+      }),
+
+    getBounceStats: protectedProcedure
+      .query(async () => {
+        const { getBounceStats } = await import('./db');
+        return getBounceStats();
+      }),
+
+    getRecentBounces: protectedProcedure
+      .input(z.object({ limit: z.number().optional() }).optional())
+      .query(async ({ input }) => {
+        const { getRecentBounces } = await import('./db');
+        return getRecentBounces(input?.limit);
+      }),
+
+    isEmailSuppressed: protectedProcedure
+      .input(z.object({ email: z.string() }))
+      .query(async ({ input }) => {
+        const { isEmailSuppressed } = await import('./db');
+        return isEmailSuppressed(input.email);
+      }),
+
     // Notification analytics endpoints
     trackNotificationOpen: publicProcedure
       .input(z.object({ trackingId: z.string() }))

@@ -1600,3 +1600,72 @@ export const linkTracking = mysqlTable("link_tracking", {
   lastClickedAt: timestamp("lastClickedAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+
+// ============================================
+// EMAIL SUBJECT A/B TESTING
+// ============================================
+export const emailSubjectTests = mysqlTable('email_subject_tests', {
+  id: int('id').autoincrement().primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  templateType: varchar('template_type', { length: 100 }).notNull(),
+  status: mysqlEnum('status', ['draft', 'running', 'completed', 'cancelled']).notNull().default('draft'),
+  winningVariantId: int('winning_variant_id'),
+  totalSent: int('total_sent').notNull().default(0),
+  confidenceLevel: int('confidence_level').default(95),
+  minSampleSize: int('min_sample_size').default(100),
+  createdBy: int('created_by').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+});
+
+export type EmailSubjectTest = typeof emailSubjectTests.$inferSelect;
+export type InsertEmailSubjectTest = typeof emailSubjectTests.$inferInsert;
+
+export const emailSubjectVariants = mysqlTable('email_subject_variants', {
+  id: int('id').autoincrement().primaryKey(),
+  testId: int('test_id').notNull(),
+  subjectLine: varchar('subject_line', { length: 500 }).notNull(),
+  previewText: varchar('preview_text', { length: 500 }),
+  weight: int('weight').notNull().default(50),
+  sentCount: int('sent_count').notNull().default(0),
+  openCount: int('open_count').notNull().default(0),
+  clickCount: int('click_count').notNull().default(0),
+  openRate: int('open_rate').default(0),
+  isWinner: boolean('is_winner').default(false),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type EmailSubjectVariant = typeof emailSubjectVariants.$inferSelect;
+export type InsertEmailSubjectVariant = typeof emailSubjectVariants.$inferInsert;
+
+// ============================================
+// EMAIL BOUNCE HANDLING
+// ============================================
+export const emailBounces = mysqlTable('email_bounces', {
+  id: int('id').autoincrement().primaryKey(),
+  email: varchar('email', { length: 255 }).notNull(),
+  userId: int('user_id'),
+  bounceType: mysqlEnum('bounce_type', ['soft', 'hard', 'complaint', 'unsubscribe']).notNull(),
+  bounceSubType: varchar('bounce_sub_type', { length: 100 }),
+  diagnosticCode: varchar('diagnostic_code', { length: 500 }),
+  notificationId: varchar('notification_id', { length: 255 }),
+  autoUnsubscribed: boolean('auto_unsubscribed').default(false),
+  processedAt: timestamp('processed_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type EmailBounce = typeof emailBounces.$inferSelect;
+export type InsertEmailBounce = typeof emailBounces.$inferInsert;
+
+export const emailSuppressionList = mysqlTable('email_suppression_list', {
+  id: int('id').autoincrement().primaryKey(),
+  email: varchar('email', { length: 255 }).notNull().unique(),
+  reason: mysqlEnum('reason', ['hard_bounce', 'complaint', 'manual', 'unsubscribe']).notNull(),
+  bounceCount: int('bounce_count').notNull().default(1),
+  lastBounceAt: timestamp('last_bounce_at'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+export type EmailSuppressionEntry = typeof emailSuppressionList.$inferSelect;
+export type InsertEmailSuppressionEntry = typeof emailSuppressionList.$inferInsert;

@@ -7769,3 +7769,318 @@ export async function getNotificationAnalyticsStats(filters: {
     byType,
   };
 }
+
+
+// ============================================
+// EMAIL SUBJECT A/B TESTING FUNCTIONS
+// ============================================
+
+import { emailSubjectTests, emailSubjectVariants, emailBounces, emailSuppressionList } from '../drizzle/schema';
+
+export async function createEmailSubjectTest(data: {
+  name: string;
+  templateType: string;
+  createdBy: number;
+  confidenceLevel?: number;
+  minSampleSize?: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(emailSubjectTests).values({
+    name: data.name,
+    templateType: data.templateType,
+    createdBy: data.createdBy,
+    confidenceLevel: data.confidenceLevel || 95,
+    minSampleSize: data.minSampleSize || 100,
+  });
+  return result[0].insertId;
+}
+
+export async function addSubjectVariant(data: {
+  testId: number;
+  subjectLine: string;
+  previewText?: string;
+  weight?: number;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(emailSubjectVariants).values({
+    testId: data.testId,
+    subjectLine: data.subjectLine,
+    previewText: data.previewText,
+    weight: data.weight || 50,
+  });
+  return result[0].insertId;
+}
+
+export async function getEmailSubjectTest(testId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const test = await db.select().from(emailSubjectTests).where(eq(emailSubjectTests.id, testId)).limit(1);
+  if (!test[0]) return null;
+  
+  const variants = await db.select().from(emailSubjectVariants).where(eq(emailSubjectVariants.testId, testId));
+  
+  return {
+    ...test[0],
+    variants,
+  };
+}
+
+export async function getActiveSubjectTests() {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(emailSubjectTests).where(eq(emailSubjectTests.status, 'running'));
+}
+
+export async function getAllSubjectTests(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(emailSubjectTests).where(eq(emailSubjectTests.createdBy, userId)).orderBy(desc(emailSubjectTests.createdAt));
+}
+
+export async function startSubjectTest(testId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(emailSubjectTests).set({ status: 'running' }).where(eq(emailSubjectTests.id, testId));
+}
+
+export async function selectRandomVariant(testId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const variants = await db.select().from(emailSubjectVariants).where(eq(emailSubjectVariants.testId, testId));
+  
+  if (variants.length === 0) return null;
+  
+  const totalWeight = variants.reduce((sum, v) => sum + (v.weight || 50), 0);
+  let random = Math.random() * totalWeight;
+  
+  for (const variant of variants) {
+    random -= variant.weight || 50;
+    if (random <= 0) {
+      await db.update(emailSubjectVariants)
+        .set({ sentCount: sql`sent_count + 1` })
+        .where(eq(emailSubjectVariants.id, variant.id));
+      
+      await db.update(emailSubjectTests)
+        .set({ totalSent: sql`total_sent + 1` })
+        .where(eq(emailSubjectTests.id, testId));
+      
+      return variant;
+    }
+  }
+  
+  return variants[0];
+}
+
+export async function recordVariantOpen(variantId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(emailSubjectVariants)
+    .set({ openCount: sql`open_count + 1` })
+    .where(eq(emailSubjectVariants.id, variantId));
+  
+  const variant = await db.select().from(emailSubjectVariants).where(eq(emailSubjectVariants.id, variantId)).limit(1);
+  if (variant[0] && variant[0].sentCount > 0) {
+    const openRate = Math.round((variant[0].openCount / variant[0].sentCount) * 100);
+    await db.update(emailSubjectVariants)
+      .set({ openRate })
+      .where(eq(emailSubjectVariants.id, variantId));
+  }
+}
+
+export async function recordVariantClick(variantId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(emailSubjectVariants)
+    .set({ clickCount: sql`click_count + 1` })
+    .where(eq(emailSubjectVariants.id, variantId));
+}
+
+export async function checkAndCompleteSubjectTest(testId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const test = await db.select().from(emailSubjectTests).where(eq(emailSubjectTests.id, testId)).limit(1);
+  if (!test[0] || test[0].status !== 'running') return null;
+  
+  const variants = await db.select().from(emailSubjectVariants).where(eq(emailSubjectVariants.testId, testId));
+  
+  const minSampleSize = test[0].minSampleSize || 100;
+  const allReachedMinSample = variants.every(v => v.sentCount >= minSampleSize);
+  
+  if (!allReachedMinSample) return null;
+  
+  let winner = variants[0];
+  for (const variant of variants) {
+    if ((variant.openRate || 0) > (winner.openRate || 0)) {
+      winner = variant;
+    }
+  }
+  
+  await db.update(emailSubjectVariants)
+    .set({ isWinner: true })
+    .where(eq(emailSubjectVariants.id, winner.id));
+  
+  await db.update(emailSubjectTests)
+    .set({ 
+      status: 'completed', 
+      winningVariantId: winner.id,
+      completedAt: new Date(),
+    })
+    .where(eq(emailSubjectTests.id, testId));
+  
+  return winner;
+}
+
+export async function cancelSubjectTest(testId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(emailSubjectTests)
+    .set({ status: 'cancelled' })
+    .where(eq(emailSubjectTests.id, testId));
+}
+
+// ============================================
+// EMAIL BOUNCE HANDLING FUNCTIONS
+// ============================================
+
+export async function recordBounce(data: {
+  email: string;
+  userId?: number;
+  bounceType: 'soft' | 'hard' | 'complaint' | 'unsubscribe';
+  bounceSubType?: string;
+  diagnosticCode?: string;
+  notificationId?: string;
+}) {
+  const db = await getDb();
+  if (!db) return false;
+  
+  await db.insert(emailBounces).values({
+    email: data.email,
+    userId: data.userId,
+    bounceType: data.bounceType,
+    bounceSubType: data.bounceSubType,
+    diagnosticCode: data.diagnosticCode,
+    notificationId: data.notificationId,
+    processedAt: new Date(),
+  });
+  
+  if (data.bounceType === 'hard' || data.bounceType === 'complaint') {
+    await addToSuppressionList(data.email, data.bounceType === 'hard' ? 'hard_bounce' : 'complaint');
+  } else if (data.bounceType === 'soft') {
+    const softBounces = await db.select()
+      .from(emailBounces)
+      .where(and(
+        eq(emailBounces.email, data.email),
+        eq(emailBounces.bounceType, 'soft')
+      ));
+    
+    if (softBounces.length >= 3) {
+      await addToSuppressionList(data.email, 'hard_bounce');
+    }
+  }
+  
+  return true;
+}
+
+export async function addToSuppressionList(email: string, reason: 'hard_bounce' | 'complaint' | 'manual' | 'unsubscribe') {
+  const db = await getDb();
+  if (!db) return false;
+  
+  const existing = await db.select()
+    .from(emailSuppressionList)
+    .where(eq(emailSuppressionList.email, email))
+    .limit(1);
+  
+  if (existing[0]) {
+    await db.update(emailSuppressionList)
+      .set({ 
+        bounceCount: sql`bounce_count + 1`,
+        lastBounceAt: new Date(),
+      })
+      .where(eq(emailSuppressionList.email, email));
+  } else {
+    await db.insert(emailSuppressionList).values({
+      email,
+      reason,
+      lastBounceAt: new Date(),
+    });
+  }
+  
+  const user = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (user[0]) {
+    await db.update(emailBounces)
+      .set({ autoUnsubscribed: true })
+      .where(eq(emailBounces.email, email));
+  }
+  
+  return true;
+}
+
+export async function isEmailSuppressed(email: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) return false;
+  const suppressed = await db.select()
+    .from(emailSuppressionList)
+    .where(eq(emailSuppressionList.email, email))
+    .limit(1);
+  
+  return suppressed.length > 0;
+}
+
+export async function removeFromSuppressionList(email: string) {
+  const db = await getDb();
+  if (!db) return false;
+  await db.delete(emailSuppressionList).where(eq(emailSuppressionList.email, email));
+  return true;
+}
+
+export async function getSuppressionList(limit = 100, offset = 0) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select()
+    .from(emailSuppressionList)
+    .orderBy(desc(emailSuppressionList.createdAt))
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function getBounceStats() {
+  const db = await getDb();
+  if (!db) return {
+    total: 0,
+    hard: 0,
+    soft: 0,
+    complaint: 0,
+    unsubscribe: 0,
+    autoUnsubscribed: 0,
+    suppressedEmails: 0,
+  };
+  
+  const allBounces = await db.select().from(emailBounces);
+  
+  const stats = {
+    total: allBounces.length,
+    hard: allBounces.filter(b => b.bounceType === 'hard').length,
+    soft: allBounces.filter(b => b.bounceType === 'soft').length,
+    complaint: allBounces.filter(b => b.bounceType === 'complaint').length,
+    unsubscribe: allBounces.filter(b => b.bounceType === 'unsubscribe').length,
+    autoUnsubscribed: allBounces.filter(b => b.autoUnsubscribed).length,
+  };
+  
+  const suppressedCount = await db.select().from(emailSuppressionList);
+  
+  return {
+    ...stats,
+    suppressedEmails: suppressedCount.length,
+  };
+}
+
+export async function getRecentBounces(limit = 50) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select()
+    .from(emailBounces)
+    .orderBy(desc(emailBounces.createdAt))
+    .limit(limit);
+}
